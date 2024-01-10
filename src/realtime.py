@@ -1,4 +1,4 @@
-from trade_strategy import *
+from utility import *
 
 
 budget = 3000
