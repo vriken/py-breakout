@@ -11,7 +11,7 @@ from aiofiles import open as aio_open
 from watchgod import awatch
 
 
-budget = 2000
+budget = 3000
 current_date = datetime.now()
 start_date = current_date - timedelta(weeks = 52 * 2)
 start_date_str = start_date.strftime('%Y-%m-%d')
@@ -22,7 +22,7 @@ whitelisted_tickers = {'TRANS.ST': 564938, 'SYSR.ST': 97407, 'SANION.ST': 475457
                        'CNCJO-B.ST': 5279, 'INDT.ST': 26607, 'INSTAL.ST': 752039,
                        'KDEV.ST': 285632, 'K2A-B.ST': 971402, 'NETI-B.ST': 5440,
                        'NIBE-B.ST': 5325}
-whitelisted_tickers_parameters = pd.read_csv('stock_data\\best_whitelisted.csv')
+whitelisted_tickers_parameters = pd.read_csv('/Users/ake/Documents/probable_spoon/stock_data/best_whitelisted.csv')
 
 owned_stocks = {}
 
@@ -45,7 +45,7 @@ async def log_transaction(transaction_type, ticker, orderbook_id, shares, price,
 
     # Check if the transaction time is between 09:00 and 17:00
     if 9 <= transaction_datetime.hour < 17:
-        file_path = 'output/trades.csv'
+        file_path = '/Users/ake/Documents/probable_spoon/output/trades.csv'
         header = ['Transaction Type', 'Ticker', 'Orderbook ID', 'Shares', 'Price', 'Date', 'Profit']
 
         async with aio_open(file_path, 'a', newline='') as file:
@@ -90,25 +90,26 @@ async def process_realtime_data(realtime_data, tickers, budget):
                 lower_length = params['lower_length']
                 upper_length = params['upper_length']
 
-                # Calculate the start and end dates for historical data (last two years)
-                current_date = datetime.now()
-                end_date = current_date  # Use the current date as the end date
-                start_date = current_date - timedelta(weeks=104)  # Set the start date 2 years (104 weeks) before the end date
-
                 # Get historical data for the ticker for the last two years
                 historical_data = await get_historical_data(ticker, start_date_str, end_date_str, "1d")
 
-                # Calculate prices x = lower_length weeks ago and x = upper_length weeks ago
-                price_lower_length_weeks_ago = historical_data['close'].iloc[-int(lower_length * 5)]  # Adjust for daily data
-                price_upper_length_weeks_ago = historical_data['close'].iloc[-int(upper_length * 5)]  # Adjust for daily data
+                # Calculate prices x = lower_length days ago and x = upper_length days ago
+                price_lower_length_days_ago = historical_data['close'].iloc[-int(lower_length)]  # add "upper_length * (5, 20, etc) for weeks, months etc."
+                price_upper_length_days_ago = historical_data['close'].iloc[-int(upper_length)]  # add "upper_length * (5, 20, etc) for weeks, months etc."
 
-                # Check for buy and sell signals based on real-time data and Donchian channels
-                buy_signal = float(buy_price) > price_lower_length_weeks_ago
-                sell_signal = float(sell_price) < price_upper_length_weeks_ago
+                # Calculate the brokerage fee for one share for buying
+                buy_fee_per_share = calculate_brokerage_fee(float(buy_price))
+                effective_buy_price = float(buy_price) + buy_fee_per_share
 
-                # Print the prices x = lower_length weeks ago and x = upper_length weeks ago
-                print(f"The price of {ticker}, orderbook id: {orderbook_id}, {lower_length} weeks ago was: {price_lower_length_weeks_ago}")
-                print(f"The price of {ticker}, orderbook id: {orderbook_id}, {upper_length} weeks ago was: {price_upper_length_weeks_ago}")
+                # Calculate the brokerage fee for one share for selling
+                sell_fee_per_share = calculate_brokerage_fee(float(sell_price))
+                effective_sell_price = float(sell_price) - sell_fee_per_share
+
+                # Adjust the buy signal to include the brokerage fee
+                buy_signal = effective_buy_price > price_upper_length_days_ago
+
+                # Adjust the sell signal to include the brokerage fee
+                sell_signal = effective_sell_price < price_lower_length_days_ago
 
                 # Print the current price and buy/sell decision
                 current_price = float(buy_price)  # Assuming you want to use the buy price for the current price
@@ -123,12 +124,14 @@ async def process_realtime_data(realtime_data, tickers, budget):
 
                             owned_stocks[ticker] = {'shares': max_affordable_shares, 'buy_price': current_price}
                             budget -= transaction_amount + fee  # Include brokerage fee
+                            
                             await log_transaction('BUY', ticker, orderbook_id, max_affordable_shares, current_price, current_datetime.strftime('%Y-%m-%d %H:%M:%S'))
-                            print(f"BUY at {current_datetime.strftime('%Y-%m-%d %H:%M:%S')}: {max_affordable_shares} Shares of {ticker} bought at {current_price} SEK, Fee: {fee} SEK, of which {fee} SEK fee")
+                            print(f"The price of {ticker}, orderbook id: {orderbook_id} is {buy_price} today, and {upper_length} days ago it was: {cl(price_upper_length_days_ago, 'blue')}")
+                            print(cl(f'Therefore we BUY at {current_datetime.strftime("%Y-%m-%d %H:%M:%S")}: {max_affordable_shares} Shares of {ticker} bought at {(current_price * max_affordable_shares) + fee} SEK, of which {fee} SEK fee', 'green'))
                         else:
-                            print(f"Budget too low to buy any shares of {ticker}.")
+                            pass
                     else:
-                        print(f"Already own {owned_stocks[ticker]['shares']} shares of {ticker}. No action taken.")
+                        pass
 
                 elif sell_signal:
                     if ticker in owned_stocks and owned_stocks[ticker]['shares'] > 0:
@@ -141,16 +144,19 @@ async def process_realtime_data(realtime_data, tickers, budget):
                         profit = total_sell_amount - total_buy_amount - fee  # Subtract brokerage fee from profit
 
                         await log_transaction('SELL', ticker, orderbook_id, sell_shares, sell_price, current_datetime.strftime('%Y-%m-%d %H:%M:%S'), profit)
-                        print(f"SELL at {current_datetime.strftime('%Y-%m-%d %H:%M:%S')}: {sell_shares} Shares of {ticker} sold at ${sell_price}, Fee: ${fee}, Profit: ${profit - fee}, of which {fee} SEK fee")
+                        print(f"The price of {ticker}, orderbook id: {orderbook_id} is {buy_price} today, and {lower_length} days ago it was: {cl(price_lower_length_days_ago), 'orange'}")
+                        print(cl(f'Therefore we SELL at {current_datetime.strftime("%Y-%m-%d %H:%M:%S")}: {sell_shares} Shares of {ticker} sold at ${sell_price}, Profit: ${profit - fee}, of which {fee} SEK fee', 'green'))
 
                         # Reset the stock entry after selling
                         owned_stocks[ticker]['shares'] = 0
                         owned_stocks[ticker]['buy_price'] = 0
                         budget += total_sell_amount - fee  # Add back the amount after subtracting the fee
                     else:
-                        print(f"No shares of {ticker} to sell")
+                        #print(f"No shares of {ticker} to sell")
+                        pass
                 else:
-                    print(f"Today, the price of {ticker} is {current_price}, no action needed.")
+                    #print(f"Today, the price of {ticker} is {current_price}, no action needed.")
+                    pass
 
             # Update the last processed datetime to the current datetime
             last_processed_datetime = current_datetime
@@ -158,7 +164,7 @@ async def process_realtime_data(realtime_data, tickers, budget):
     except Exception as e:
         print(f"Error processing real-time data: {e}")
 
-realtime_data_dir = 'C:\\Users\\vrike\\Documents\\probable-spoon\\probable-spoon\\stock_data'
+realtime_data_dir = '/Users/ake/Documents/probable_spoon/stock_data'
 
 processed_lines = set()
 
