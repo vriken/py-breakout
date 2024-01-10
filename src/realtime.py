@@ -4,7 +4,8 @@ from utility import *
 budget = 3000
 current_date = datetime.now()
 start_date_str = "2022-01-10"
-end_date_str = "2024-01-11" #Make sure that you have realtime data beginning the day after this
+end_date = current_date - timedelta(days=1)
+end_date_str = end_date.strftime('%Y-%m-%d')
 
 
 whitelisted_tickers = {'TRANS.ST': 564938, 'SYSR.ST': 97407, 'SANION.ST': 475457,
@@ -86,19 +87,11 @@ async def process_realtime_data(realtime_data, tickers, budget):
                 price_lower_length_days_ago = historical_data['high'].iloc[-int(upper_length):].min()
                 price_upper_length_days_ago = historical_data['high'].iloc[-int(upper_length):].max()
 
-                # Calculate the brokerage fee for one share for buying
-                buy_fee_per_share = calculate_brokerage_fee(float(buy_price))
-                effective_buy_price = float(buy_price) + buy_fee_per_share
-
-                # Calculate the brokerage fee for one share for selling
-                sell_fee_per_share = calculate_brokerage_fee(float(sell_price))
-                effective_sell_price = float(sell_price) - sell_fee_per_share
-
                 # Adjust the buy signal to include the brokerage fee
-                buy_signal = effective_buy_price > price_upper_length_days_ago
+                buy_signal = float(buy_price) > price_upper_length_days_ago
 
                 # Adjust the sell signal to include the brokerage fee
-                sell_signal = effective_sell_price < price_lower_length_days_ago
+                sell_signal = float(buy_price) < price_lower_length_days_ago
 
                 # Print the current price and buy/sell decision
                 current_price = float(buy_price)  # Assuming you want to use the buy price for the current price
@@ -118,10 +111,10 @@ async def process_realtime_data(realtime_data, tickers, budget):
                             print(f"The price of {ticker}, orderbook id: {orderbook_id} is {buy_price} today.\nThe highest price within {upper_length} days was: {cl(price_upper_length_days_ago, 'blue')}")
                             print(cl(f'Therefore we BUY at {current_datetime.strftime("%Y-%m-%d %H:%M:%S")}: {max_affordable_shares} Shares of {ticker} bought at {(current_price * max_affordable_shares) + fee} SEK, of which {fee} SEK fee', 'green'))
                         else:
-                            print(f"No shares of {ticker} to sell")
+                            #print(f"No shares of {ticker} to sell")
                             pass
                     else:
-                        print(f"Today, the price of {ticker} is {current_price}, no action needed.")
+                        print(f"Right now, the price of {ticker} is {current_price}, no action needed.\nWe are waiting for price to hit {price_upper_length_days_ago}, or {price_lower_length_days_ago}")
                         pass
 
                 elif sell_signal:
@@ -143,10 +136,10 @@ async def process_realtime_data(realtime_data, tickers, budget):
                         owned_stocks[ticker]['buy_price'] = 0
                         budget += total_sell_amount - fee  # Add back the amount after subtracting the fee
                     else:
-                        print(f"No shares of {ticker} to sell")
+                        #print(f"No shares of {ticker} to sell")
                         pass
                 else:
-                    print(f"Today, the price of {ticker} is {current_price}, no action needed.")
+                    print(f"Right now, the price of {ticker} is {current_price}, no action needed.\nWe are waiting for price to hit {price_upper_length_days_ago}, or {price_lower_length_days_ago}")
                     pass
 
             # Update the last processed datetime to the current datetime
@@ -168,7 +161,7 @@ async def watch_for_data_changes():
                     async for line in file:
                         if line.strip() not in processed_lines:
                             processed_lines.add(line.strip())
-                            await process_realtime_data(line.strip(), whitelisted_tickers, budget/len(whitelisted_tickers))
+                            await process_realtime_data(line.strip(), whitelisted_tickers, budget) #/len(whitelisted_tickers))
 
 
 
