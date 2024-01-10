@@ -13,9 +13,8 @@ from watchgod import awatch
 
 budget = 3000
 current_date = datetime.now()
-start_date = current_date - timedelta(weeks = 52 * 2)
-start_date_str = start_date.strftime('%Y-%m-%d')
-end_date_str = current_date.strftime('%Y-%m-%d')
+start_date_str = "2022-01-10"
+end_date_str = "2024-01-11" #Make sure that you have realtime data beginning the day after this
 
 
 whitelisted_tickers = {'TRANS.ST': 564938, 'SYSR.ST': 97407, 'SANION.ST': 475457,
@@ -94,8 +93,8 @@ async def process_realtime_data(realtime_data, tickers, budget):
                 historical_data = await get_historical_data(ticker, start_date_str, end_date_str, "1d")
 
                 # Calculate prices x = lower_length days ago and x = upper_length days ago
-                price_lower_length_days_ago = historical_data['close'].iloc[-int(lower_length)]  # add "upper_length * (5, 20, etc) for weeks, months etc."
-                price_upper_length_days_ago = historical_data['close'].iloc[-int(upper_length)]  # add "upper_length * (5, 20, etc) for weeks, months etc."
+                price_lower_length_days_ago = historical_data['high'].iloc[-int(upper_length):].min()
+                price_upper_length_days_ago = historical_data['high'].iloc[-int(upper_length):].max()
 
                 # Calculate the brokerage fee for one share for buying
                 buy_fee_per_share = calculate_brokerage_fee(float(buy_price))
@@ -126,11 +125,13 @@ async def process_realtime_data(realtime_data, tickers, budget):
                             budget -= transaction_amount + fee  # Include brokerage fee
                             
                             await log_transaction('BUY', ticker, orderbook_id, max_affordable_shares, current_price, current_datetime.strftime('%Y-%m-%d %H:%M:%S'))
-                            print(f"The price of {ticker}, orderbook id: {orderbook_id} is {buy_price} today, and {upper_length} days ago it was: {cl(price_upper_length_days_ago, 'blue')}")
+                            print(f"The price of {ticker}, orderbook id: {orderbook_id} is {buy_price} today.\nThe highest price within {upper_length} days was: {cl(price_upper_length_days_ago, 'blue')}")
                             print(cl(f'Therefore we BUY at {current_datetime.strftime("%Y-%m-%d %H:%M:%S")}: {max_affordable_shares} Shares of {ticker} bought at {(current_price * max_affordable_shares) + fee} SEK, of which {fee} SEK fee', 'green'))
                         else:
+                            print(f"No shares of {ticker} to sell")
                             pass
                     else:
+                        print(f"Today, the price of {ticker} is {current_price}, no action needed.")
                         pass
 
                 elif sell_signal:
@@ -152,10 +153,10 @@ async def process_realtime_data(realtime_data, tickers, budget):
                         owned_stocks[ticker]['buy_price'] = 0
                         budget += total_sell_amount - fee  # Add back the amount after subtracting the fee
                     else:
-                        #print(f"No shares of {ticker} to sell")
+                        print(f"No shares of {ticker} to sell")
                         pass
                 else:
-                    #print(f"Today, the price of {ticker} is {current_price}, no action needed.")
+                    print(f"Today, the price of {ticker} is {current_price}, no action needed.")
                     pass
 
             # Update the last processed datetime to the current datetime
