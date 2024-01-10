@@ -1,14 +1,4 @@
 from trade_strategy import *
-import ast
-from datetime import datetime, timedelta
-from visualize import visualize_stock
-import pandas as pd
-import asyncio
-import queue
-import math
-import asyncio
-from aiofiles import open as aio_open
-from watchgod import awatch
 
 
 budget = 3000
