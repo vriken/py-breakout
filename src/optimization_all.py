@@ -1,18 +1,21 @@
 from utility import *
-from bayes_opt import BayesianOptimization
-from trade_strategy import implement_strategy
 
-ticker_list = ['TRANS.ST', 'SYSR.ST', 'SANION.ST', 'CNCJO-B.ST','INDT.ST', 'INSTAL.ST', 'KDEV.ST', 'K2A-B.ST', 'NETI-B.ST', 'NIBE-B.ST']
+ticker_df = pd.read_csv('/Users/ake/Documents/probable_spoon/stock_data/formatted_stock_tickers.csv', header = None)
+ticker_list = ticker_df[0].tolist()
 
-from utility import *
+# Path to the output file
+output_file = '/Users/ake/Documents/probable_spoon/output/realtime_parameters.csv'
+
+# Clear the existing file if it exists
+if os.path.isfile(output_file):
+    os.remove(output_file)
 
 all_actions = []
 # Define the parameter space
 pbounds = {
-    'lower_length': (1, 40),
-    'upper_length': (5, 52)
+    'lower_length': (1, 45),
+    'upper_length': (5, 55)
 }
-
 
 def objective_for_ticker(ticker, lower_length, upper_length):
     try:
@@ -37,7 +40,7 @@ def objective_for_ticker(ticker, lower_length, upper_length):
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-def optimize_for_ticker(ticker):
+def optimize_and_write_for_ticker(ticker):
     try:
         optimizer = BayesianOptimization(
             f=lambda lower_length, upper_length: objective_for_ticker(ticker, lower_length, upper_length),
@@ -46,19 +49,21 @@ def optimize_for_ticker(ticker):
             allow_duplicate_points=True
         )
 
-        optimizer.maximize(init_points=8, n_iter=55)   
-        return ticker, optimizer.max                    
+        optimizer.maximize(init_points=32, n_iter=48)   
+        
+        # Write this ticker's best parameters to CSV
+        result_data = optimizer.max['params']
+        result_data['target'] = optimizer.max['target']
+        result = pd.DataFrame([result_data], index=[ticker])
+        
+        if not os.path.isfile('/Users/ake/Documents/probable_spoon/output/realtime_parameters.csv'):
+            result.to_csv('/Users/ake/Documents/probable_spoon/output/realtime_parameters.csv', header=True)
+        else: # else it exists so append without writing the header
+            result.to_csv('/Users/ake/Documents/probable_spoon/output/realtime_parameters.csv', mode='a', header=False)
+
     except Exception as e:                              
         print(f"Error optimizing {ticker}: {e}")
-        return ticker, None
-    
-best_parameters_per_ticker = {}
 
-with ThreadPoolExecutor(max_workers=10) as executor:
-    futures = {executor.submit(optimize_for_ticker, ticker): ticker for ticker in ticker_list}
-    for future in as_completed(futures):
-        ticker, result = future.result()
-        if result is not None:
-            best_parameters_per_ticker[ticker] = result
-
-pd.DataFrame(best_parameters_per_ticker).transpose().to_csv('output\\best_whitelisted.csv', index=True)
+# Process each ticker in parallel and write results
+with ThreadPoolExecutor(max_workers=15) as executor:
+    executor.map(optimize_and_write_for_ticker, ticker_list)
