@@ -12,7 +12,7 @@ whitelisted_tickers = {'TRANS.ST': 564938, 'SYSR.ST': 97407, 'SANION.ST': 475457
                        'CNCJO-B.ST': 5279, 'INDT.ST': 26607, 'INSTAL.ST': 752039,
                        'KDEV.ST': 285632, 'K2A-B.ST': 971402, 'NETI-B.ST': 5440,
                        'NIBE-B.ST': 5325}
-whitelisted_tickers_parameters = pd.read_csv('/Users/ake/Documents/probable_spoon/stock_data/best_whitelisted.csv')
+whitelisted_tickers_parameters = pd.read_csv('input/best_whitelisted.csv')
 
 owned_stocks = {}
 
@@ -35,7 +35,7 @@ async def log_transaction(transaction_type, ticker, orderbook_id, shares, price,
 
     # Check if the transaction time is between 09:00 and 17:00
     if 9 <= transaction_datetime.hour < 17:
-        file_path = '/Users/ake/Documents/probable_spoon/output/trades.csv'
+        file_path = 'output/trades.csv'
         header = ['Transaction Type', 'Ticker', 'Orderbook ID', 'Shares', 'Price', 'Date', 'Profit']
 
         async with aio_open(file_path, 'a', newline='') as file:
@@ -148,7 +148,7 @@ async def process_realtime_data(realtime_data, tickers, budget):
     except Exception as e:
         print(f"Error processing real-time data: {e}")
 
-realtime_data_dir = '/Users/ake/Documents/probable_spoon/stock_data'
+realtime_data_dir = 'input'
 
 processed_lines = set()
 
@@ -156,7 +156,7 @@ async def watch_for_data_changes():
     async for changes in awatch(realtime_data_dir):
         for change in changes:
             _, path = change
-            if path.endswith('stock_data.txt'):
+            if path.endswith('realtime_data.txt'):
                 async with aio_open(path, 'r') as file:
                     async for line in file:
                         if line.strip() not in processed_lines:

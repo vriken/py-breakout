@@ -1,10 +1,10 @@
 from utility import *
 
-ticker_df = pd.read_csv('/Users/ake/Documents/probable_spoon/stock_data/formatted_stock_tickers.csv', header = None)
+ticker_df = pd.read_csv('stock_data/formatted_stock_tickers.csv', header = None)
 ticker_list = ticker_df[0].tolist()
 
 # Path to the output file
-output_file = '/Users/ake/Documents/probable_spoon/output/realtime_parameters.csv'
+output_file = 'output/realtime_parameters.csv'
 
 # Clear the existing file if it exists
 if os.path.isfile(output_file):
@@ -56,10 +56,10 @@ def optimize_and_write_for_ticker(ticker):
         result_data['target'] = optimizer.max['target']
         result = pd.DataFrame([result_data], index=[ticker])
         
-        if not os.path.isfile('/Users/ake/Documents/probable_spoon/output/realtime_parameters.csv'):
-            result.to_csv('/Users/ake/Documents/probable_spoon/output/realtime_parameters.csv', header=True)
+        if not os.path.isfile('output/realtime_parameters.csv'):
+            result.to_csv('output/realtime_parameters.csv', header=True)
         else: # else it exists so append without writing the header
-            result.to_csv('/Users/ake/Documents/probable_spoon/output/realtime_parameters.csv', mode='a', header=False)
+            result.to_csv('output/realtime_parameters.csv', mode='a', header=False)
 
     except Exception as e:                              
         print(f"Error optimizing {ticker}: {e}")

@@ -1,8 +1,8 @@
 from utility import *
 
-#ticker_list = ['TRANS.ST', 'SYSR.ST', 'SANION.ST', 'CNCJO-B.ST','INDT.ST', 'INSTAL.ST', 'KDEV.ST', 'K2A-B.ST', 'NETI-B.ST', 'NIBE-B.ST']
-ticker_df = pd.read_csv('/Users/ake/Documents/probable_spoon/stock_data/formatted_stock_tickers.csv', header = None)
-ticker_list = ticker_df[0].tolist()
+ticker_list = ['TRANS.ST', 'SYSR.ST', 'SANION.ST', 'CNCJO-B.ST','INDT.ST', 'INSTAL.ST', 'KDEV.ST', 'K2A-B.ST', 'NETI-B.ST', 'NIBE-B.ST']
+# ticker_df = pd.read_csv('stock_data/formatted_stock_tickers.csv', header = None)
+# ticker_list = ticker_df[0].tolist()
 
 from utility import *
 
@@ -60,4 +60,4 @@ with ThreadPoolExecutor(max_workers=15) as executor:
         if result is not None:
             best_parameters_per_ticker[ticker] = result
 
-pd.DataFrame(best_parameters_per_ticker).transpose().to_csv('/Users/ake/Documents/probable_spoon/output/best_whitelisted.csv', index=True)
+pd.DataFrame(best_parameters_per_ticker).transpose().to_csv('input/best_whitelisted.csv', index=True)
