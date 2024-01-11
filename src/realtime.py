@@ -1,18 +1,27 @@
 from utility import datetime, timedelta, pd, queue, aio_open, ast, get_historical_data, math, calculate_brokerage_fee, cl, awatch, asyncio
 
 
-budget = 3000
+budget = 1000
 current_date = datetime.now()
 start_date_str = "2022-01-10"
 end_date = current_date - timedelta(days=1)
 end_date_str = end_date.strftime('%Y-%m-%d')
 
+# Load the CSV file
+selected_stocks_df = pd.read_csv('/Users/ake/Documents/probable_spoon/input/best_tickers.csv')
+# Convert the 'ticker' and 'id' columns to a dictionary
+whitelisted_tickers = dict(zip(selected_stocks_df['ticker'], selected_stocks_df['id']))
 
-whitelisted_tickers = {'TRANS.ST': 564938, 'SYSR.ST': 97407, 'SANION.ST': 475457,
-                       'CNCJO-B.ST': 5279, 'INDT.ST': 26607, 'INSTAL.ST': 752039,
-                       'KDEV.ST': 285632, 'K2A-B.ST': 971402, 'NETI-B.ST': 5440,
-                       'NIBE-B.ST': 5325}
-whitelisted_tickers_parameters = pd.read_csv('input/best_whitelisted.csv')
+# Extracting parameters for each ticker
+whitelisted_tickers_parameters = {}
+for index, row in selected_stocks_df.iterrows():
+    ticker = row['ticker']
+    params = {
+        'lower_length': row['lower_length'],
+        'upper_length': row['upper_length']
+    }
+    whitelisted_tickers_parameters[ticker] = params
+
 
 owned_stocks = {}
 
@@ -74,11 +83,13 @@ async def process_realtime_data(realtime_data, tickers, budget):
 
             if ticker:
                 # Get the Donchian channel parameters for this ticker
-                params = ast.literal_eval(whitelisted_tickers_parameters.loc[whitelisted_tickers_parameters['ticker'] == ticker]['params'].values[0])
-
+                if ticker in whitelisted_tickers_parameters:
+                    params = whitelisted_tickers_parameters[ticker]
+                    lower_length = params['lower_length']
+                    upper_length = params['upper_length']
                 # Calculate Donchian channels for the ticker based on the parameters
-                lower_length = params['lower_length']
-                upper_length = params['upper_length']
+                #lower_length = params['lower_length']
+                #upper_length = params['upper_length']
 
                 # Get historical data for the ticker for the last two years
                 historical_data = await get_historical_data(ticker, start_date_str, end_date_str, "1d")
@@ -156,12 +167,12 @@ async def watch_for_data_changes():
     async for changes in awatch(realtime_data_dir):
         for change in changes:
             _, path = change
-            if path.endswith('realtime_data.txt'):
+            if path.endswith('realtime_data.csv'):
                 async with aio_open(path, 'r') as file:
                     async for line in file:
                         if line.strip() not in processed_lines:
                             processed_lines.add(line.strip())
-                            await process_realtime_data(line.strip(), whitelisted_tickers, budget) #/len(whitelisted_tickers))
+                            await process_realtime_data(line.strip(), whitelisted_tickers, budget)
 
 
 

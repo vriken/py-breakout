@@ -6,6 +6,7 @@ import pandas as pd
 from termcolor import colored as cl
 import asyncio
 import ast
+import time
 from visualize import visualize_stock
 import queue
 import math
@@ -17,6 +18,7 @@ import os
 import csv
 from bayes_opt import BayesianOptimization
 from avanza import Avanza, ChannelType, OrderType
+from dotenv import load_dotenv
 
 def implement_strategy(stock, investment, lower_length=None, upper_length=None):
     actions = []
@@ -65,6 +67,13 @@ def implement_strategy(stock, investment, lower_length=None, upper_length=None):
 
     return actions, equity, earning
 
+load_dotenv()
+avanza = Avanza({
+    'username': os.getenv('AVANZA_USERNAME'),
+    'password': os.getenv('AVANZA_PASSWORD'),
+    'totpSecret': os.getenv('AVANZA_TOTP_SECRET')
+})
+
 def extract_ids_and_update_csv(input_file_path, output_file_path):
     with open(input_file_path, mode='r') as infile, open(output_file_path, mode='w', newline='') as outfile:
         reader = csv.DictReader(infile)
@@ -82,6 +91,8 @@ def extract_ids_and_update_csv(input_file_path, output_file_path):
                 row['id'] = 'Not Found'
             
             writer.writerow(row)
+            
+extract_ids_and_update_csv('/Users/ake/Documents/probable_spoon/input/best_tickers_without_id.csv', '/Users/ake/Documents/probable_spoon/input/best_tickers.csv')
 
 async def get_historical_data(ticker, start_date, end_date, interval):
     loop = asyncio.get_running_loop()
