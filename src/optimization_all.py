@@ -1,4 +1,4 @@
-from utility import *
+from utility import pd, os, datetime, timedelta, get_historical_data_sync, implement_strategy, BayesianOptimization
 
 ticker_df = pd.read_csv('stock_data/formatted_stock_tickers.csv', header = None)
 ticker_list = ticker_df[0].tolist()

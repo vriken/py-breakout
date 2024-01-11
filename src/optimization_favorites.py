@@ -1,10 +1,8 @@
-from utility import *
+from utility import datetime, timedelta, get_historical_data_sync, implement_strategy, BayesianOptimization
 
 ticker_list = ['TRANS.ST', 'SYSR.ST', 'SANION.ST', 'CNCJO-B.ST','INDT.ST', 'INSTAL.ST', 'KDEV.ST', 'K2A-B.ST', 'NETI-B.ST', 'NIBE-B.ST']
 # ticker_df = pd.read_csv('stock_data/formatted_stock_tickers.csv', header = None)
 # ticker_list = ticker_df[0].tolist()
-
-from utility import *
 
 all_actions = []
 # Define the parameter space
