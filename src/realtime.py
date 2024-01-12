@@ -95,7 +95,7 @@ async def process_realtime_data(realtime_data, tickers, budget):
                 historical_data = await get_historical_data(ticker, start_date_str, end_date_str, "1d")
 
                 # Calculate prices x = lower_length days ago and x = upper_length days ago
-                price_lower_length_days_ago = historical_data['high'].iloc[-int(upper_length):].min()
+                price_lower_length_days_ago = historical_data['low'].iloc[-int(lower_length):].min()
                 price_upper_length_days_ago = historical_data['high'].iloc[-int(upper_length):].max()
 
                 # Adjust the buy signal to include the brokerage fee
@@ -110,17 +110,22 @@ async def process_realtime_data(realtime_data, tickers, budget):
                 if buy_signal:
                     if ticker not in owned_stocks or owned_stocks[ticker]['shares'] == 0:
                         # Calculate the maximum number of shares that can be bought within the budget
-                        max_affordable_shares = math.floor(budget / (current_price * 1.0025))  # Include brokerage fee in calculation
+                        max_budget_for_stock = min(budget * 0.2, budget)
+                        max_affordable_shares = math.floor(max_budget_for_stock / (current_price * 1.0025))  # Including brokerage fee
                         if max_affordable_shares > 0:
                             transaction_amount = max_affordable_shares * current_price
                             fee = calculate_brokerage_fee(transaction_amount)
-
-                            owned_stocks[ticker] = {'shares': max_affordable_shares, 'buy_price': current_price}
-                            budget -= transaction_amount + fee  # Include brokerage fee
                             
-                            await log_transaction('BUY', ticker, orderbook_id, max_affordable_shares, current_price, current_datetime.strftime('%Y-%m-%d %H:%M:%S'))
-                            print(f"The price of {ticker}, orderbook id: {orderbook_id} is {buy_price} today.\nThe highest price within {upper_length} days was: {cl(price_upper_length_days_ago, 'blue')}")
-                            print(cl(f'Therefore we BUY at {current_datetime.strftime("%Y-%m-%d %H:%M:%S")}: {max_affordable_shares} Shares of {ticker} bought at {(current_price * max_affordable_shares) + fee} SEK, of which {fee} SEK fee', 'green'))
+                            if transaction_amount + fee <= max_budget_for_stock:
+
+                                owned_stocks[ticker] = {'shares': max_affordable_shares, 'buy_price': current_price}
+                                budget -= transaction_amount + fee  # Include brokerage fee
+                                
+                                await log_transaction('BUY', ticker, orderbook_id, max_affordable_shares, current_price, current_datetime.strftime('%Y-%m-%d %H:%M:%S'))
+                                print(f"The price of {ticker}, orderbook id: {orderbook_id} is {buy_price} today.\nThe highest price within {upper_length} days was: {cl(price_upper_length_days_ago, 'blue')}")
+                                print(cl(f'Therefore we BUY at {current_datetime.strftime("%Y-%m-%d %H:%M:%S")}: {max_affordable_shares} Shares of {ticker} bought at {(current_price * max_affordable_shares) + fee} SEK, of which {fee} SEK fee', 'green'))
+                            else:
+                                print(f'Not enough budget to buy {ticker}. Required:  {transaction_amount + fee} SEK, Available: {max_budget_for_stock} SEK')
                         else:
                             #print(f"No shares of {ticker} to sell")
                             pass
@@ -159,15 +164,17 @@ async def process_realtime_data(realtime_data, tickers, budget):
     except Exception as e:
         print(f"Error processing real-time data: {e}")
 
-realtime_data_dir = 'input'
+realtime_data_dir = 'input/'
 
 processed_lines = set()
+
+realtime_data_name = datetime.now().strftime("%Y-%m-%d")
 
 async def watch_for_data_changes():
     async for changes in awatch(realtime_data_dir):
         for change in changes:
             _, path = change
-            if path.endswith('realtime_data.csv'):
+            if path.endswith(f'{realtime_data_name}_data.csv'):
                 async with aio_open(path, 'r') as file:
                     async for line in file:
                         if line.strip() not in processed_lines:

@@ -16,7 +16,7 @@ def objective_for_ticker(ticker, lower_length, upper_length):
     try:
         print(f"Processing {ticker}")
         current_date = datetime.now()
-        start_date = current_date - timedelta(weeks=52)
+        start_date = current_date - timedelta(weeks=30)
         start_date_str = start_date.strftime('%Y-%m-%d')
         end_date_str = current_date.strftime('%Y-%m-%d')
         

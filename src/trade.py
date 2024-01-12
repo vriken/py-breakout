@@ -3,10 +3,10 @@ from utility import load_dotenv, os, pd, datetime, Avanza, OrderType, asyncio
 load_dotenv()
 
 # Get credentials and account ID from environment variables
-username = os.getenv('AVANZA_USERNAME')
-password = os.getenv('AVANZA_PASSWORD')
-totp_secret = os.getenv('AVANZA_TOTP_SECRET')
-account_id = os.getenv('AVANZA_ACCOUNT_ID')
+#username = os.getenv('AVANZA_USERNAME')
+#password = os.getenv('AVANZA_PASSWORD')
+#totp_secret = os.getenv('AVANZA_TOTP_SECRET')
+#account_id = os.getenv('AVANZA_ACCOUNT_ID')
 
 # Avanza credentials
 avanza = Avanza({

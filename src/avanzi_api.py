@@ -12,6 +12,9 @@ selected_stocks_df = pd.read_csv('/Users/ake/Documents/probable_spoon/input/best
 # Convert the 'ticker' and 'id' columns to a dictionary
 whitelisted_tickers = dict(zip(selected_stocks_df['ticker'], selected_stocks_df['id']))
 
+current_date = datetime.now().strftime("%Y-%m-%d")
+
+
 # print(whitelisted_tickers.head())
 
 def callback(data):
@@ -25,7 +28,7 @@ def callback(data):
     updated_datetime = datetime.fromtimestamp(updated_timestamp / 1000.0)
 
     # Save data to a file (you could also save to a database)
-    with open('/Users/ake/Documents/probable_spoon/input/realtime_data.csv', 'a') as file:
+    with open(f"input/realtime_data_{current_date}_data.csv", 'a') as file:
         file.write(f"{orderbook_id}, {buy_price}, {sell_price}, {updated_datetime}\n")
 
 

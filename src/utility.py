@@ -1,5 +1,6 @@
 from yahoo_fin.stock_info import get_data
 import argparse
+from pandas_ta import donchian
 import pandas_ta as ta
 from datetime import datetime, timedelta
 import pandas as pd
@@ -68,11 +69,11 @@ def implement_strategy(stock, investment, lower_length=None, upper_length=None):
     return actions, equity, earning
 
 load_dotenv()
-avanza = Avanza({
-    'username': os.getenv('AVANZA_USERNAME'),
-    'password': os.getenv('AVANZA_PASSWORD'),
-    'totpSecret': os.getenv('AVANZA_TOTP_SECRET')
-})
+#avanza = Avanza({
+#    'username': os.getenv('AVANZA_USERNAME'),
+#    'password': os.getenv('AVANZA_PASSWORD'),
+#    'totpSecret': os.getenv('AVANZA_TOTP_SECRET')
+#})
 
 def extract_ids_and_update_csv(input_file_path, output_file_path):
     with open(input_file_path, mode='r') as infile, open(output_file_path, mode='w', newline='') as outfile:
@@ -92,7 +93,31 @@ def extract_ids_and_update_csv(input_file_path, output_file_path):
             
             writer.writerow(row)
             
-extract_ids_and_update_csv('/Users/ake/Documents/probable_spoon/input/best_tickers_without_id.csv', '/Users/ake/Documents/probable_spoon/input/best_tickers.csv')
+#extract_ids_and_update_csv('/Users/ake/Documents/probable_spoon/input/best_tickers_without_id.csv', '/Users/ake/Documents/probable_spoon/input/best_tickers.csv')
+
+async def log_transaction(transaction_type, ticker, orderbook_id, shares, price, transaction_date, profit=None, file_path = 'output/trades.csv'):
+    # Parse the transaction date to a datetime object
+    transaction_datetime = datetime.strptime(transaction_date, '%Y-%m-%d %H:%M:%S')
+
+    # Check if the transaction time is between 09:00 and 17:00
+    if 9 <= transaction_datetime.hour < 17:
+        #file_path = 'output/trades.csv'
+        header = ['Transaction Type', 'Ticker', 'Orderbook ID', 'Shares', 'Price', 'Date', 'Profit']
+
+        async with aio_open(file_path, 'a', newline='') as file:
+            # Check if the file is empty and write header if it is
+            if (await file.tell()) == 0:
+                await file.write(','.join(header) + '\n')
+
+            transaction_data = [transaction_type, ticker, str(orderbook_id), str(shares), str(price), transaction_date]
+
+            # Include profit in the log for sell transactions
+            if transaction_type == 'SELL' and profit is not None:
+                transaction_data.append(str(profit))
+            else:
+                transaction_data.append('')  # Append empty string for non-sell transactions
+
+            await file.write(','.join(transaction_data) + '\n')
 
 async def get_historical_data(ticker, start_date, end_date, interval):
     loop = asyncio.get_running_loop()
