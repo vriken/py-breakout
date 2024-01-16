@@ -1,6 +1,6 @@
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
-from trade_strategy import *
+from utility import implement_strategy, asyncio, pd
 import ast
 import argparse
 from datetime import datetime, timedelta
@@ -37,7 +37,7 @@ async def process_ticker(ticker, params):
 
 # Main asynchronous function
 async def main():
-    best_tickers_df = pd.read_csv('stock_data\\best_whitelisted.csv')
+    best_tickers_df = pd.read_csv('/Users/ake/Documents/probable_spoon/input/best_tickers.csv')
     best_tickers_df = best_tickers_df[best_tickers_df['ticker'].isin(whitelisted_tickers)]
 
     parser = argparse.ArgumentParser()

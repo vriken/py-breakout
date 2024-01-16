@@ -7,7 +7,7 @@ async def fetch_historical_data(ticker, values):
     stock = stock[['date', 'high', 'low', 'ticker']]
     stock['id'] = values['id']
     stock[['dcl', 'dcm', 'dcu']] = stock.ta.donchian(lower_length=values['lower_length'], upper_length=values['upper_length'])
-    print(stock)
+    #print(stock)
     return stock
 
 async def load_historical_data():

@@ -1,7 +1,6 @@
 from yahoo_fin.stock_info import get_data
 import argparse
 from pandas_ta import donchian
-import pandas_ta as ta
 from datetime import datetime, timedelta
 import pandas as pd
 from termcolor import colored as cl

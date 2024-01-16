@@ -1,0 +1,37 @@
+
+**Explanation:**
+
+- **Cron Syntax**: The cron format consists of five fields representing minute, hour, day of the month, month, and day of the week, followed by the command to execute.
+
+- **Time Adjustments for GMT+1**: Since the cron daemon uses UTC time, you'll need to adjust the times in your crontab to match GMT+1. For example, 18:00 GMT+1 translates to 17:00 UTC (in standard time; this doesn't account for daylight saving changes).
+
+- **Log Files**: The `>> /var/log/cron.log 2>&1` part ensures that the output of the scripts, as well as any errors, are logged.
+
+**Further Steps:**
+
+- **Build the Docker Image**: Run `docker build -t your-app-name .` in the directory with your `Dockerfile`.
+
+- **Running the Container**: Use `docker run` with necessary flags to start your container. Keep in mind that for the cron jobs to run correctly, the container must be kept running.
+
+**Note on Time Zones:** 
+- If your server is not running in UTC, you may need additional steps to ensure the correct time zone is used within the Docker container.
+- During daylight saving time changes, you may need to adjust the times in your crontab accordingly, or configure the Docker container to automatically adjust for daylight saving time. 
+
+This setup provides a basic framework and may require adjustments based on the specifics of your environment and application.
+
+
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# Everyday at 18:00 GMT+1
+0 17 * * 1-5 cd /usr/src/app && python ./src/optimization_favorites.py >> /var/log/cron.log 2>&1
+
+# Every weekday from 08:45 to 17:00 GMT+1
+45 7-16 * * 1-5 cd /usr/src/app && python ./src/avanzi_api.py >> /var/log/cron.log 2>&1
+
+# Every weekday from 08:45 to 17:00 GMT+1
+45 7-16 * * 1-5 cd /usr/src/app && python ./src/realtime.py >> /var/log/cron.log 2>&1
+
+# Every weekday from 09:00 to 17:00 GMT+1
+0 8-16 * * 1-5 cd /usr/src/app && python ./src/trade.py >> /var/log/cron.log 2>&1
+

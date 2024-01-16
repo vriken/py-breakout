@@ -14,9 +14,6 @@ whitelisted_tickers = dict(zip(selected_stocks_df['ticker'], selected_stocks_df[
 
 current_date = datetime.now().strftime("%Y-%m-%d")
 
-
-# print(whitelisted_tickers.head())
-
 def callback(data):
     # Use 'data' directly since it is already a dictionary
     orderbook_id = data['data']['orderbookId']

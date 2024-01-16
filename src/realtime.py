@@ -1,7 +1,7 @@
 from utility import datetime, timedelta, pd, queue, aio_open, ast, get_historical_data, math, calculate_brokerage_fee, cl, awatch, asyncio
 
 
-budget = 1000
+budget = 1045
 current_date = datetime.now()
 start_date_str = "2022-01-10"
 end_date = current_date - timedelta(days=1)
@@ -43,7 +43,7 @@ async def log_transaction(transaction_type, ticker, orderbook_id, shares, price,
     transaction_datetime = datetime.strptime(transaction_date, '%Y-%m-%d %H:%M:%S')
 
     # Check if the transaction time is between 09:00 and 17:00
-    if 9 <= transaction_datetime.hour < 17:
+    if 8 <= transaction_datetime.hour < 17:
         file_path = 'output/trades.csv'
         header = ['Transaction Type', 'Ticker', 'Orderbook ID', 'Shares', 'Price', 'Date', 'Profit']
 
@@ -72,8 +72,6 @@ async def process_realtime_data(realtime_data, tickers, budget):
 
         # Remove leading and trailing spaces from the datetime string
         datetime_str = datetime_str.strip()
-
-        # Parse the datetime string to a datetime object
         current_datetime = parse_datetime(datetime_str)
 
         # Check if this datetime is newer than the last processed datetime
@@ -87,22 +85,33 @@ async def process_realtime_data(realtime_data, tickers, budget):
                     params = whitelisted_tickers_parameters[ticker]
                     lower_length = params['lower_length']
                     upper_length = params['upper_length']
-                # Calculate Donchian channels for the ticker based on the parameters
-                #lower_length = params['lower_length']
-                #upper_length = params['upper_length']
 
                 # Get historical data for the ticker for the last two years
                 historical_data = await get_historical_data(ticker, start_date_str, end_date_str, "1d")
 
-                # Calculate prices x = lower_length days ago and x = upper_length days ago
-                price_lower_length_days_ago = historical_data['low'].iloc[-int(lower_length):].min()
-                price_upper_length_days_ago = historical_data['high'].iloc[-int(upper_length):].max()
+                # Update historical data with real-time data
+                new_data = pd.DataFrame([{'high': float(sell_price), 'low': float(buy_price), 'date': current_datetime}])
+                historical_data = pd.concat([historical_data, new_data], ignore_index=True)
 
-                # Adjust the buy signal to include the brokerage fee
-                buy_signal = float(buy_price) > price_upper_length_days_ago
+                # Ensure lower_length and upper_length are integers and not greater than DataFrame length
+                lower_length = int(min(lower_length, len(historical_data)))
+                upper_length = int(min(upper_length, len(historical_data)))
 
-                # Adjust the sell signal to include the brokerage fee
-                sell_signal = float(buy_price) < price_lower_length_days_ago
+                # Calculate the date range for lower_length and upper_length
+                lower_date_limit = current_datetime - pd.to_timedelta(lower_length, unit='d')
+                upper_date_limit = current_datetime - pd.to_timedelta(upper_length, unit='d')
+
+                # Filter the historical data for the respective ranges
+                lower_range_data = historical_data[historical_data['date'] >= lower_date_limit]
+                upper_range_data = historical_data[historical_data['date'] >= upper_date_limit]
+
+                # Calculate the Donchian channels
+                price_lower_length_days_ago = lower_range_data['low'].min()
+                price_upper_length_days_ago = upper_range_data['high'].max()
+                
+                # Buy and sell signals
+                buy_signal = float(buy_price) >= price_upper_length_days_ago
+                sell_signal = float(buy_price) <= price_lower_length_days_ago
 
                 # Print the current price and buy/sell decision
                 current_price = float(buy_price)  # Assuming you want to use the buy price for the current price
