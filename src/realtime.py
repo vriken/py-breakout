@@ -1,9 +1,50 @@
 from utility import datetime, timedelta, pd, queue, aio_open, ast, get_historical_data, math, calculate_brokerage_fee, cl, awatch, asyncio
 
+owned_stocks = {}
 
 budget = 1045
+# Modify function to accept owned_stocks dictionary
+def update_budget_from_past_trades(budget, owned_stocks):
+    try:
+        trades_df = pd.read_csv('output/trades.csv')
+        for index, row in trades_df.iterrows():
+            transaction_amount = row['Shares'] * row['Price']
+            ticker = row['Ticker']
+            
+            if row['Transaction Type'] == 'BUY':
+                budget -= transaction_amount
+                
+                # Update owned_stocks for BUY transaction
+                if ticker not in owned_stocks:
+                    owned_stocks[ticker] = {'shares': row['Shares'], 'buy_price': row['Price']}
+                else:
+                    owned_shares = owned_stocks[ticker]['shares']
+                    average_price = (owned_shares * owned_stocks[ticker]['buy_price'] + transaction_amount) / (owned_shares + row['Shares'])
+                    owned_stocks[ticker]['shares'] += row['Shares']
+                    owned_stocks[ticker]['buy_price'] = average_price
+
+            elif row['Transaction Type'] == 'SELL':
+                budget += transaction_amount
+                
+                # Update owned_stocks for SELL transaction
+                if ticker in owned_stocks:
+                    owned_stocks[ticker]['shares'] -= row['Shares']
+                    if owned_stocks[ticker]['shares'] <= 0:
+                        del owned_stocks[ticker]
+                    
+    except FileNotFoundError:
+        print("No previous trades file found. Starting with initial budget.")
+    
+    return budget
+
+# Update budget based on past trades
+budget = update_budget_from_past_trades(budget, owned_stocks)
+
+print(owned_stocks)
+
 current_date = datetime.now()
-start_date_str = "2022-01-10"
+start_date = current_date - timedelta(days = 8)
+start_date_str = start_date.strftime('%Y-%m-%d')
 end_date = current_date - timedelta(days=1)
 end_date_str = end_date.strftime('%Y-%m-%d')
 
@@ -21,11 +62,6 @@ for index, row in selected_stocks_df.iterrows():
         'upper_length': row['upper_length']
     }
     whitelisted_tickers_parameters[ticker] = params
-
-
-owned_stocks = {}
-
-file_update_queue = queue.Queue()
 
 last_processed_datetime = None
 
@@ -87,7 +123,7 @@ async def process_realtime_data(realtime_data, tickers, budget):
                     upper_length = params['upper_length']
 
                 # Get historical data for the ticker for the last two years
-                historical_data = await get_historical_data(ticker, start_date_str, end_date_str, "1d")
+                historical_data = await get_historical_data(ticker, start_date_str, end_date_str, "1wk")
 
                 # Update historical data with real-time data
                 new_data = pd.DataFrame([{'high': float(sell_price), 'low': float(buy_price), 'date': current_datetime}])
@@ -111,7 +147,7 @@ async def process_realtime_data(realtime_data, tickers, budget):
                 
                 # Buy and sell signals
                 buy_signal = float(buy_price) >= price_upper_length_days_ago
-                sell_signal = float(buy_price) <= price_lower_length_days_ago
+                sell_signal = float(buy_price) < price_lower_length_days_ago
 
                 # Print the current price and buy/sell decision
                 current_price = float(buy_price)  # Assuming you want to use the buy price for the current price

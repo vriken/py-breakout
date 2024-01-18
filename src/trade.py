@@ -24,14 +24,24 @@ async def trade(avanza):
             print(f"Error reading CSV file: {e}")
             continue
 
+        current_date = datetime.now().date()  # Get the current date
+
         for index, row in trades.iloc[last_row_processed:].iterrows():
             try:
+                date_str = row['Date'].split(' ')[0]
+                trade_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+
+                # Skip the trade if the date is in the past
+                if trade_date < current_date:
+                    print(f"Skipping past trade for {row['Ticker']} on {date_str}")
+                    last_row_processed = index + 1
+                    continue
+
                 order_type = OrderType.BUY if row['Transaction Type'] == 'BUY' else OrderType.SELL
                 order_book_id = row['Orderbook ID']
                 volume = row['Shares']
                 price = row['Price']
-                date_str = row['Date'].split(' ')[0]
-                valid_until = datetime.strptime(date_str, '%Y-%m-%d').date()
+                valid_until = trade_date
 
                 result = avanza.place_order(
                     account_id=os.getenv('AVANZA_ACCOUNT_ID'),

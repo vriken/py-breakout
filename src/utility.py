@@ -49,7 +49,7 @@ def implement_strategy(stock, investment, lower_length=None, upper_length=None):
             equity -= fee  # Deducting the transaction fee
 
         # Sell
-        elif stock['low'].iloc[i] <= stock['dcl'].iloc[i] and in_position:
+        elif stock['low'].iloc[i] < stock['dcl'].iloc[i] and in_position:
             equity += no_of_shares * stock.close.iloc[i]
             in_position = False
             actions.append({'Date': current_date_or_datetime, 'Action': 'SELL', 'Shares': no_of_shares, 'Price': stock.close.iloc[i], 'Volume': stock.volume.iloc[i]})
@@ -67,7 +67,7 @@ def implement_strategy(stock, investment, lower_length=None, upper_length=None):
 
     return actions, equity, earning
 
-load_dotenv()
+#load_dotenv()
 #avanza = Avanza({
 #    'username': os.getenv('AVANZA_USERNAME'),
 #    'password': os.getenv('AVANZA_PASSWORD'),
@@ -155,7 +155,7 @@ def distribute_budget(stock_prices, budget):
 
     return owned_shares, budget
 
-def stock_picker(csv_file, num_stocks=40, output_csv_file='selected_stocks.csv'):
+def stock_picker(csv_file, num_stocks=100, output_csv_file='100_tickers.csv'):
     # Load the data
     df = pd.read_csv(csv_file)
 
@@ -173,7 +173,7 @@ def stock_picker(csv_file, num_stocks=40, output_csv_file='selected_stocks.csv')
     selected_stocks[['ticker', 'target', 'lower_length', 'upper_length', 'id']].to_csv(output_csv_file, index=False)
 
 # Call the function to select and write the top 30 stocks to 'selected_stocks.csv'
-#stock_picker('/Users/ake/Documents/probable_spoon/output/all_tickers.csv', 50, '/Users/ake/Documents/probable_spoon/output/selected_stocks.csv')
+stock_picker('/Users/ake/Documents/probable_spoon/input/all_ticker_optimized_without_id.csv', 100, '/Users/ake/Documents/probable_spoon/input/100_tickers.csv')
 
 
 #TODO:

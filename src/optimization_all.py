@@ -4,7 +4,7 @@ ticker_df = pd.read_csv('stock_data/formatted_stock_tickers.csv', header = None)
 ticker_list = ticker_df[0].tolist()
 
 # Path to the output file
-output_file = 'output/realtime_parameters.csv'
+output_file = 'output/optimized_tickers.csv'
 
 # Clear the existing file if it exists
 if os.path.isfile(output_file):
@@ -13,15 +13,15 @@ if os.path.isfile(output_file):
 all_actions = []
 # Define the parameter space
 pbounds = {
-    'lower_length': (1, 45),
-    'upper_length': (5, 55)
+    'lower_length': (1, 30),
+    'upper_length': (5, 30)
 }
 
 def objective_for_ticker(ticker, lower_length, upper_length):
     try:
         print(f"Processing {ticker}")
         current_date = datetime.now()
-        start_date = current_date - timedelta(weeks=52*2)
+        start_date = current_date - timedelta(weeks=10)
         start_date_str = start_date.strftime('%Y-%m-%d')
         end_date_str = current_date.strftime('%Y-%m-%d')
         
@@ -49,17 +49,17 @@ def optimize_and_write_for_ticker(ticker):
             allow_duplicate_points=True
         )
 
-        optimizer.maximize(init_points=32, n_iter=48)   
+        optimizer.maximize(init_points=16, n_iter=32)   
         
         # Write this ticker's best parameters to CSV
         result_data = optimizer.max['params']
         result_data['target'] = optimizer.max['target']
         result = pd.DataFrame([result_data], index=[ticker])
         
-        if not os.path.isfile('output/realtime_parameters.csv'):
-            result.to_csv('output/realtime_parameters.csv', header=True)
+        if not os.path.isfile('output/optimized_tickers.csv'):
+            result.to_csv('output/optimized_tickers.csv', header=True)
         else: # else it exists so append without writing the header
-            result.to_csv('output/realtime_parameters.csv', mode='a', header=False)
+            result.to_csv('output/optimized_tickers.csv', mode='a', header=False)
 
     except Exception as e:                              
         print(f"Error optimizing {ticker}: {e}")
