@@ -1,4 +1,4 @@
-from utility import datetime, timedelta, pd, queue, aio_open, ast, get_historical_data, math, calculate_brokerage_fee, cl, awatch, asyncio
+from utility import datetime, timedelta, pd, queue, aio_open, ast, get_data, math, calculate_brokerage_fee, cl, awatch, asyncio
 
 owned_stocks = {}
 
@@ -6,7 +6,7 @@ budget = 1045
 # Modify function to accept owned_stocks dictionary
 def update_budget_from_past_trades(budget, owned_stocks):
     try:
-        trades_df = pd.read_csv('output/trades.csv')
+        trades_df = pd.read_csv('./output/trades.csv')
         for index, row in trades_df.iterrows():
             transaction_amount = row['Shares'] * row['Price']
             ticker = row['Ticker']
@@ -43,13 +43,13 @@ budget = update_budget_from_past_trades(budget, owned_stocks)
 print(owned_stocks)
 
 current_date = datetime.now()
-start_date = current_date - timedelta(days = 8)
+start_date = current_date - timedelta(weeks = 10)
 start_date_str = start_date.strftime('%Y-%m-%d')
-end_date = current_date - timedelta(days=1)
+end_date = current_date - timedelta(days=0)
 end_date_str = end_date.strftime('%Y-%m-%d')
 
 # Load the CSV file
-selected_stocks_df = pd.read_csv('/Users/ake/Documents/probable_spoon/input/best_tickers.csv')
+selected_stocks_df = pd.read_csv('./input/best_tickers.csv')
 # Convert the 'ticker' and 'id' columns to a dictionary
 whitelisted_tickers = dict(zip(selected_stocks_df['ticker'], selected_stocks_df['id']))
 
@@ -123,31 +123,25 @@ async def process_realtime_data(realtime_data, tickers, budget):
                     upper_length = params['upper_length']
 
                 # Get historical data for the ticker for the last two years
-                historical_data = await get_historical_data(ticker, start_date_str, end_date_str, "1wk")
+                historical_data = get_data(ticker, start_date_str, end_date_str, "1d")
 
-                # Update historical data with real-time data
-                new_data = pd.DataFrame([{'high': float(sell_price), 'low': float(buy_price), 'date': current_datetime}])
-                historical_data = pd.concat([historical_data, new_data], ignore_index=True)
+                # Calculate the date limits for lower_length and upper_length
+                max_date = historical_data.index.max()
+                min_date_lower = max_date - pd.Timedelta(days=lower_length)
+                min_date_upper = max_date - pd.Timedelta(days=upper_length)
 
-                # Ensure lower_length and upper_length are integers and not greater than DataFrame length
-                lower_length = int(min(lower_length, len(historical_data)))
-                upper_length = int(min(upper_length, len(historical_data)))
+                # Filter the historical data for the required date ranges
+                filtered_data_lower = historical_data[(historical_data.index <= max_date) & (historical_data.index >= min_date_lower)]
+                filtered_data_upper = historical_data[(historical_data.index <= max_date) & (historical_data.index >= min_date_upper)]
 
-                # Calculate the date range for lower_length and upper_length
-                lower_date_limit = current_datetime - pd.to_timedelta(lower_length, unit='d')
-                upper_date_limit = current_datetime - pd.to_timedelta(upper_length, unit='d')
+                # Calculate lowest_price and highest_price
+                lowest_price = min(filtered_data_lower['low']) #, float(buy_price))
+                highest_price = max(filtered_data_upper['high']) #, float(buy_price))
 
-                # Filter the historical data for the respective ranges
-                lower_range_data = historical_data[historical_data['date'] >= lower_date_limit]
-                upper_range_data = historical_data[historical_data['date'] >= upper_date_limit]
-
-                # Calculate the Donchian channels
-                price_lower_length_days_ago = lower_range_data['low'].min()
-                price_upper_length_days_ago = upper_range_data['high'].max()
-                
-                # Buy and sell signals
-                buy_signal = float(buy_price) >= price_upper_length_days_ago
-                sell_signal = float(buy_price) < price_lower_length_days_ago
+                # Buy signal: True if current buy_price is higher than the max 'high' price in the last lower_length days
+                buy_signal = float(buy_price) > highest_price
+                # Sell signal: True if current buy_price is lower than the min 'low' price in the last upper_length days
+                sell_signal = float(buy_price) < lowest_price
 
                 # Print the current price and buy/sell decision
                 current_price = float(buy_price)  # Assuming you want to use the buy price for the current price
@@ -167,7 +161,7 @@ async def process_realtime_data(realtime_data, tickers, budget):
                                 budget -= transaction_amount + fee  # Include brokerage fee
                                 
                                 await log_transaction('BUY', ticker, orderbook_id, max_affordable_shares, current_price, current_datetime.strftime('%Y-%m-%d %H:%M:%S'))
-                                print(f"The price of {ticker}, orderbook id: {orderbook_id} is {buy_price} today.\nThe highest price within {upper_length} days was: {cl(price_upper_length_days_ago, 'blue')}")
+                                print(f"The price of {ticker}, orderbook id: {orderbook_id} is {buy_price} today.\nThe highest price within {upper_length} days was: {highest_price}")
                                 print(cl(f'Therefore we BUY at {current_datetime.strftime("%Y-%m-%d %H:%M:%S")}: {max_affordable_shares} Shares of {ticker} bought at {(current_price * max_affordable_shares) + fee} SEK, of which {fee} SEK fee', 'green'))
                             else:
                                 print(f'Not enough budget to buy {ticker}. Required:  {transaction_amount + fee} SEK, Available: {max_budget_for_stock} SEK')
@@ -175,7 +169,7 @@ async def process_realtime_data(realtime_data, tickers, budget):
                             #print(f"No shares of {ticker} to sell")
                             pass
                     else:
-                        print(f"Right now, the price of {ticker} is {current_price}, no action needed.\nWe are waiting for price to hit {price_upper_length_days_ago}, or {price_lower_length_days_ago}")
+                        print(f"Right now, the price of {ticker} is {current_price}, no action needed.\nWe are waiting for price to hit {highest_price}, or {lowest_price}")
                         pass
 
                 elif sell_signal:
@@ -189,7 +183,7 @@ async def process_realtime_data(realtime_data, tickers, budget):
                         profit = total_sell_amount - total_buy_amount - fee  # Subtract brokerage fee from profit
 
                         await log_transaction('SELL', ticker, orderbook_id, sell_shares, sell_price, current_datetime.strftime('%Y-%m-%d %H:%M:%S'), profit)
-                        print(f"The price of {ticker}, orderbook id: {orderbook_id} is {buy_price} today, and {lower_length} days ago it was: {cl(price_lower_length_days_ago), 'orange'}")
+                        print(f"The price of {ticker}, orderbook id: {orderbook_id} is {buy_price} today, and {lower_length} days ago it was: {lowest_price}")
                         print(cl(f'Therefore we SELL at {current_datetime.strftime("%Y-%m-%d %H:%M:%S")}: {sell_shares} Shares of {ticker} sold at ${sell_price}, Profit: ${profit - fee}, of which {fee} SEK fee', 'green'))
 
                         # Reset the stock entry after selling
@@ -200,7 +194,7 @@ async def process_realtime_data(realtime_data, tickers, budget):
                         #print(f"No shares of {ticker} to sell")
                         pass
                 else:
-                    print(f"Right now, the price of {ticker} is {current_price}, no action needed.\nWe are waiting for price to hit {price_upper_length_days_ago}, or {price_lower_length_days_ago}")
+                    print(f"Right now, the price of {ticker} is {current_price}, no action needed.\nWe are waiting for price to hit {highest_price}, or {lowest_price}")
                     pass
 
             # Update the last processed datetime to the current datetime
@@ -209,7 +203,7 @@ async def process_realtime_data(realtime_data, tickers, budget):
     except Exception as e:
         print(f"Error processing real-time data: {e}")
 
-realtime_data_dir = 'input/'
+realtime_data_dir = './input/'
 
 processed_lines = set()
 

@@ -11,9 +11,10 @@ from utility import get_historical_data
 amount_to_invest = 200
 
 current_date = datetime.now()
-start_date = current_date - timedelta(weeks = 10)
+start_date = current_date - timedelta(days = 40)
 start_date_str = start_date.strftime('%Y-%m-%d')
-end_date_str = current_date.strftime('%Y-%m-%d')
+end_date = current_date - timedelta(days=1)
+end_date_str = end_date.strftime('%Y-%m-%d')
 
 async def process_ticker(ticker, lower_length, upper_length):
     try:
@@ -30,7 +31,7 @@ async def process_ticker(ticker, lower_length, upper_length):
 
 # Main asynchronous function
 async def main():
-    best_tickers_df = pd.read_csv('/Users/ake/Documents/probable_spoon/input/best_tickers.csv')
+    best_tickers_df = pd.read_csv('./input/best_tickers.csv')
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--visualize", action="store_true", help="Visualize the stock data")

@@ -9,7 +9,7 @@ avanza = Avanza({
     'totpSecret': os.getenv('AVANZA_TOTP_SECRET')
 })
 
-file_path = r"/Users/ake/Documents/probable_spoon/output/trades.csv"
+file_path = r"./output/trades.csv"
 
 # Track the last row processed
 last_row_processed = 0
