@@ -453,7 +453,7 @@
                 'currentPosition': 2.0,
                 'startValue': 0.0,
                 'endValue': 180.4
-            }, {
+            }, {-
                 'isin': 'SE0008374250',
                 'shortName': 'FING B',
                 'link': {
