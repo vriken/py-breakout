@@ -2,7 +2,7 @@ from utility import datetime, timedelta, pd, queue, aio_open, ast, get_data, mat
 
 owned_stocks = {}
 
-budget = 1045
+budget = 1145
 # Modify function to accept owned_stocks dictionary
 def update_budget_from_past_trades(budget, owned_stocks):
     try:
@@ -79,7 +79,7 @@ async def log_transaction(transaction_type, ticker, orderbook_id, shares, price,
     transaction_datetime = datetime.strptime(transaction_date, '%Y-%m-%d %H:%M:%S')
 
     # Check if the transaction time is between 09:00 and 17:00
-    if 8 <= transaction_datetime.hour < 17:
+    if 9 <= transaction_datetime.hour < 17:
         file_path = 'output/trades.csv'
         header = ['Transaction Type', 'Ticker', 'Orderbook ID', 'Shares', 'Price', 'Date', 'Profit']
 
@@ -149,7 +149,7 @@ async def process_realtime_data(realtime_data, tickers, budget):
                 if buy_signal:
                     if ticker not in owned_stocks or owned_stocks[ticker]['shares'] == 0:
                         # Calculate the maximum number of shares that can be bought within the budget
-                        max_budget_for_stock = min(budget * 0.2, budget)
+                        max_budget_for_stock = min(budget * 0.4, budget)
                         max_affordable_shares = math.floor(max_budget_for_stock / (current_price * 1.0025))  # Including brokerage fee
                         if max_affordable_shares > 0:
                             transaction_amount = max_affordable_shares * current_price
@@ -180,7 +180,7 @@ async def process_realtime_data(realtime_data, tickers, budget):
                         fee = calculate_brokerage_fee(total_sell_amount)
 
                         total_buy_amount = sell_shares * owned_stocks[ticker]['buy_price']
-                        profit = total_sell_amount - total_buy_amount - fee  # Subtract brokerage fee from profit
+                        profit = total_sell_amount - total_buy_amount - fee*2  # Subtract brokerage fee from profit
 
                         await log_transaction('SELL', ticker, orderbook_id, sell_shares, sell_price, current_datetime.strftime('%Y-%m-%d %H:%M:%S'), profit)
                         print(f"The price of {ticker}, orderbook id: {orderbook_id} is {buy_price} today, and {lower_length} days ago it was: {lowest_price}")

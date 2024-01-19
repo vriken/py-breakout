@@ -8,17 +8,17 @@ ticker_list = ticker_df['ticker'].tolist()
 
 # Define the parameter space
 pbounds = {
-    'lower_length': (1, 10),
-    'upper_length': (11, 21)
+    'lower_length': (1, 20),
+    'upper_length': (2, 40)
 }
 
 def objective_for_ticker(ticker, lower_length, upper_length):
     try:
         print(f"Processing {ticker}")
         current_date = datetime.now()
-        start_date = current_date - timedelta(days = 80)
+        start_date = current_date - timedelta(days = 41)
         start_date_str = start_date.strftime('%Y-%m-%d')
-        end_date = current_date - timedelta(days=1)
+        end_date = current_date - timedelta(days=0)
         end_date_str = end_date.strftime('%Y-%m-%d')
         
         stock = get_historical_data_sync(ticker, start_date_str, end_date_str, "1d")

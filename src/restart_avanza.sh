@@ -2,7 +2,7 @@
 while true
 do
    # Start the script
-   python /Users/ake/Documents/probable_spoon/src/avanzi_api.py &
+   python /Users/ake/Documents/probable_spoon_a/src/avanzi_api.py &
    # Get the PID of the process
    PID=$!
 
