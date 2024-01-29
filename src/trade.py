@@ -1,4 +1,4 @@
-from utility import load_dotenv, os, pd, datetime, Avanza, OrderType, asyncio
+from utility import load_dotenv, os, pd, datetime, Avanza, OrderType, asyncio, timedelta
 
 load_dotenv()
 
@@ -24,16 +24,15 @@ async def trade(avanza):
             print(f"Error reading CSV file: {e}")
             continue
 
-        current_date = datetime.now().date()  # Get the current date
+        current_datetime = datetime.now()  # Get the current datetime
 
         for index, row in trades.iloc[last_row_processed:].iterrows():
             try:
-                date_str = row['Date'].split(' ')[0]
-                trade_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+                trade_datetime = datetime.strptime(row['Date'], '%Y-%m-%d %H:%M:%S')
 
-                # Skip the trade if the date is in the past
-                if trade_date < current_date:
-                    print(f"Skipping past trade for {row['Ticker']} on {date_str}")
+                # Skip the trade if the datetime is more than 5 seconds in the past
+                if trade_datetime < (current_datetime - timedelta(seconds=30)):
+                    print(f"Skipping past trade for {row['Ticker']} on {row['Date']}")
                     last_row_processed = index + 1
                     continue
 
@@ -41,7 +40,7 @@ async def trade(avanza):
                 order_book_id = row['Orderbook ID']
                 volume = row['Shares']
                 price = row['Price']
-                valid_until = trade_date
+                valid_until = trade_datetime.date()  # Extract just the date part for valid_until
 
                 result = avanza.place_order(
                     account_id=os.getenv('AVANZA_ACCOUNT_ID'),

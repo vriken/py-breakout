@@ -1,19 +1,15 @@
 from yahoo_fin.stock_info import get_data
 import argparse
+import time
 from pandas_ta import donchian
 from datetime import datetime, timedelta
 import pandas as pd
 from termcolor import colored as cl
 import asyncio
-import ast
-import time
 from visualize import visualize_stock
-import queue
-import math
-from aiofiles import open as aio_open
+from math import floor
+from aiofile import async_open as aio_open
 from watchgod import awatch
-from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler
 import os
 import csv
 from bayes_opt import BayesianOptimization
@@ -103,9 +99,9 @@ async def log_transaction(transaction_type, ticker, orderbook_id, shares, price,
         #file_path = 'output/trades.csv'
         header = ['Transaction Type', 'Ticker', 'Orderbook ID', 'Shares', 'Price', 'Date', 'Profit']
 
-        async with aio_open(file_path, 'a', newline='') as file:
+        async with aio_open(file_path, 'a') as file:
             # Check if the file is empty and write header if it is
-            if (await file.tell()) == 0:
+            if (file.tell()) == 0:
                 await file.write(','.join(header) + '\n')
 
             transaction_data = [transaction_type, ticker, str(orderbook_id), str(shares), str(price), transaction_date]

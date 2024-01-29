@@ -5,9 +5,10 @@ do
    python /Users/ake/Documents/probable_spoon_a/src/avanzi_api.py &
    # Get the PID of the process
    PID=$!
+   echo $PID
 
    # Countdown for 15 minutes (900 seconds)
-   for ((i=300; i>0; i--)); do
+   for ((i=900; i>0; i--)); do
       sleep 1
       # Check if the remaining time is a multiple of 30
       if (( i % 30 == 0 )); then
@@ -19,6 +20,7 @@ do
    echo -ne "\rRestarting the script now.           "
    
    # Kill the process
+   echo $PID
    kill $PID
    # Wait a moment before restarting
    sleep 5

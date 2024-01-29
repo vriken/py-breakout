@@ -1,9 +1,8 @@
-from utility import datetime, timedelta, pd, queue, aio_open, ast, get_data, math, calculate_brokerage_fee, cl, awatch, asyncio
+from utility import datetime, timedelta, pd, aio_open, get_data, floor, calculate_brokerage_fee, cl, awatch, asyncio, log_transaction
 
 owned_stocks = {}
+budget = 362
 
-budget = 1145
-# Modify function to accept owned_stocks dictionary
 def update_budget_from_past_trades(budget, owned_stocks):
     try:
         trades_df = pd.read_csv('./output/trades.csv')
@@ -37,13 +36,12 @@ def update_budget_from_past_trades(budget, owned_stocks):
     
     return budget
 
-# Update budget based on past trades
 budget = update_budget_from_past_trades(budget, owned_stocks)
 
 print(owned_stocks)
 
 current_date = datetime.now()
-start_date = current_date - timedelta(weeks = 10)
+start_date = current_date - timedelta(weeks = 52)
 start_date_str = start_date.strftime('%Y-%m-%d')
 end_date = current_date - timedelta(days=0)
 end_date_str = end_date.strftime('%Y-%m-%d')
@@ -74,31 +72,6 @@ def parse_datetime(datetime_str):
     raise ValueError(f"time data '{datetime_str}' does not match any expected format")
 
 
-async def log_transaction(transaction_type, ticker, orderbook_id, shares, price, transaction_date, profit=None):
-    # Parse the transaction date to a datetime object
-    transaction_datetime = datetime.strptime(transaction_date, '%Y-%m-%d %H:%M:%S')
-
-    # Check if the transaction time is between 09:00 and 17:00
-    if 9 <= transaction_datetime.hour < 17:
-        file_path = 'output/trades.csv'
-        header = ['Transaction Type', 'Ticker', 'Orderbook ID', 'Shares', 'Price', 'Date', 'Profit']
-
-        async with aio_open(file_path, 'a', newline='') as file:
-            # Check if the file is empty and write header if it is
-            if (await file.tell()) == 0:
-                await file.write(','.join(header) + '\n')
-
-            transaction_data = [transaction_type, ticker, str(orderbook_id), str(shares), str(price), transaction_date]
-
-            # Include profit in the log for sell transactions
-            if transaction_type == 'SELL' and profit is not None:
-                transaction_data.append(str(profit))
-            else:
-                transaction_data.append('')  # Append empty string for non-sell transactions
-
-            await file.write(','.join(transaction_data) + '\n')
-
-
 async def process_realtime_data(realtime_data, tickers, budget):
     global last_processed_datetime
 
@@ -125,23 +98,18 @@ async def process_realtime_data(realtime_data, tickers, budget):
                 # Get historical data for the ticker for the last two years
                 historical_data = get_data(ticker, start_date_str, end_date_str, "1d")
 
-                # Calculate the date limits for lower_length and upper_length
                 max_date = historical_data.index.max()
                 min_date_lower = max_date - pd.Timedelta(days=lower_length)
                 min_date_upper = max_date - pd.Timedelta(days=upper_length)
-
-                # Filter the historical data for the required date ranges
+                
                 filtered_data_lower = historical_data[(historical_data.index <= max_date) & (historical_data.index >= min_date_lower)]
                 filtered_data_upper = historical_data[(historical_data.index <= max_date) & (historical_data.index >= min_date_upper)]
 
-                # Calculate lowest_price and highest_price
                 lowest_price = min(filtered_data_lower['low']) #, float(buy_price))
                 highest_price = max(filtered_data_upper['high']) #, float(buy_price))
 
-                # Buy signal: True if current buy_price is higher than the max 'high' price in the last lower_length days
-                buy_signal = float(buy_price) > highest_price
-                # Sell signal: True if current buy_price is lower than the min 'low' price in the last upper_length days
-                sell_signal = float(buy_price) < lowest_price
+                buy_signal = float(buy_price) >= highest_price
+                sell_signal = float(buy_price) <= lowest_price
 
                 # Print the current price and buy/sell decision
                 current_price = float(buy_price)  # Assuming you want to use the buy price for the current price
@@ -150,7 +118,7 @@ async def process_realtime_data(realtime_data, tickers, budget):
                     if ticker not in owned_stocks or owned_stocks[ticker]['shares'] == 0:
                         # Calculate the maximum number of shares that can be bought within the budget
                         max_budget_for_stock = min(budget * 0.4, budget)
-                        max_affordable_shares = math.floor(max_budget_for_stock / (current_price * 1.0025))  # Including brokerage fee
+                        max_affordable_shares = floor(max_budget_for_stock / (current_price * 1.0025))  # Including brokerage fee
                         if max_affordable_shares > 0:
                             transaction_amount = max_affordable_shares * current_price
                             fee = calculate_brokerage_fee(transaction_amount)
@@ -206,24 +174,26 @@ async def process_realtime_data(realtime_data, tickers, budget):
 realtime_data_dir = './input/'
 
 processed_lines = set()
-
 realtime_data_name = datetime.now().strftime("%Y-%m-%d")
 
 async def watch_for_data_changes():
-    async for changes in awatch(realtime_data_dir):
-        for change in changes:
-            _, path = change
-            if path.endswith(f'{realtime_data_name}_data.csv'):
-                async with aio_open(path, 'r') as file:
-                    async for line in file:
-                        if line.strip() not in processed_lines:
-                            processed_lines.add(line.strip())
-                            await process_realtime_data(line.strip(), whitelisted_tickers, budget)
+    while True:
+        try:
+            async for changes in awatch(realtime_data_dir):
+                for change in changes:
+                    _, path = change
+                    if path.endswith(f'{realtime_data_name}_data.csv'):
+                        async with aio_open(path, 'r') as file:
+                            async for line in file:
+                                if line.strip() not in processed_lines:
+                                    processed_lines.add(line.strip())
+                                    await process_realtime_data(line.strip(), whitelisted_tickers, budget)
+        except Exception as e:
+            # Handle exceptions here, you can log them or take appropriate action
+            print(f"An error occurred: {e}")
 
-
-
-# Continuously monitor real-time data changes
-async def main():
-    await watch_for_data_changes()
+# Run the function in an asyncio event loop
+if __name__ == "__main__":
+    asyncio.run(watch_for_data_changes())
 
 asyncio.run(main())

@@ -1,22 +1,23 @@
-from utility import pd, datetime, timedelta, get_historical_data_sync, implement_strategy, BayesianOptimization
+from utility import pd, datetime, timedelta, get_historical_data_sync, implement_strategy, BayesianOptimization, extract_ids_and_update_csv, load_dotenv, Avanza
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from os import getenv
 
 # Load ticker data from a CSV file
 ticker_df = pd.read_csv('./input/best_tickers.csv')
-ticker_list = ticker_df['ticker'].tolist()
+ticker_list = ticker_df[['id', 'ticker']].to_dict('records')
 
 
 # Define the parameter space
 pbounds = {
-    'lower_length': (1, 20),
-    'upper_length': (2, 40)
+    'lower_length': (1, 40),
+    'upper_length': (2, 50)
 }
 
 def objective_for_ticker(ticker, lower_length, upper_length):
     try:
         print(f"Processing {ticker}")
         current_date = datetime.now()
-        start_date = current_date - timedelta(days = 41)
+        start_date = current_date - timedelta(weeks = 52)
         start_date_str = start_date.strftime('%Y-%m-%d')
         end_date = current_date - timedelta(days=0)
         end_date_str = end_date.strftime('%Y-%m-%d')
@@ -34,7 +35,9 @@ def objective_for_ticker(ticker, lower_length, upper_length):
         print(f"Error processing {ticker}: {e}")
         return 0
 
-def optimize_for_ticker(ticker):
+def optimize_for_ticker(ticker_record):
+    ticker_id = ticker_record['id']
+    ticker = ticker_record['ticker']
     try:
         optimizer = BayesianOptimization(
             f=lambda lower_length, upper_length: objective_for_ticker(ticker, lower_length, upper_length),
@@ -43,8 +46,10 @@ def optimize_for_ticker(ticker):
             allow_duplicate_points=True
         )
 
-        optimizer.maximize(init_points=15, n_iter=45)
-        return optimizer.max
+        optimizer.maximize(init_points=10, n_iter=50)
+        max_params = optimizer.max
+        max_params['id'] = ticker_id  # Add the ticker_id to the result
+        return max_params
 
     except Exception as e:
         print(f"Error optimizing {ticker}: {e}")
@@ -54,13 +59,13 @@ results = []
 
 # Process each ticker in parallel and collect results
 with ThreadPoolExecutor(max_workers=5) as executor:
-    futures = {executor.submit(optimize_for_ticker, ticker): ticker for ticker in ticker_list}
+    futures = {executor.submit(optimize_for_ticker, ticker_record): ticker_record for ticker_record in ticker_list}
     for future in as_completed(futures):
         params = future.result()
         if params is not None:
-            ticker = futures[future]
-            results.append([ticker, params['target'], params['params']['lower_length'], params['params']['upper_length']])
+            ticker_record = futures[future]
+            results.append([ticker_record['id'], ticker_record['ticker'], params['target'], params['params']['lower_length'], params['params']['upper_length']])
 
 # Save results to a CSV file
-result_df = pd.DataFrame(results, columns=['ticker', 'target', 'lower_length', 'upper_length'])
-result_df.to_csv('./input/best_tickers_without_id.csv', index=False)
+result_df = pd.DataFrame(results, columns=['id', 'ticker', 'target', 'lower_length', 'upper_length'])
+result_df.to_csv('./output/optimized_tickers_with_id.csv', index=False)
