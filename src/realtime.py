@@ -1,182 +1,160 @@
-from utility import datetime, timedelta, pd, aio_open, get_data, floor, calculate_brokerage_fee, cl, awatch, asyncio, log_transaction
+from utility import get_balance, get_owned_stocks, read_csv, parse_datetime, get_data, datetime, timedelta, floor, calculate_brokerage_fee, log_transaction, cl, awatch, aio_open, randint
+import asyncio
 
+budget = get_balance()
+print(f'Initial budget is: {budget}\n')
+
+# checking which stocks we already own
 owned_stocks = {}
-budget = 362
-
-def update_budget_from_past_trades(budget, owned_stocks):
-    try:
-        trades_df = pd.read_csv('./output/trades.csv')
-        for index, row in trades_df.iterrows():
-            transaction_amount = row['Shares'] * row['Price']
-            ticker = row['Ticker']
-            
-            if row['Transaction Type'] == 'BUY':
-                budget -= transaction_amount
-                
-                # Update owned_stocks for BUY transaction
-                if ticker not in owned_stocks:
-                    owned_stocks[ticker] = {'shares': row['Shares'], 'buy_price': row['Price']}
-                else:
-                    owned_shares = owned_stocks[ticker]['shares']
-                    average_price = (owned_shares * owned_stocks[ticker]['buy_price'] + transaction_amount) / (owned_shares + row['Shares'])
-                    owned_stocks[ticker]['shares'] += row['Shares']
-                    owned_stocks[ticker]['buy_price'] = average_price
-
-            elif row['Transaction Type'] == 'SELL':
-                budget += transaction_amount
-                
-                # Update owned_stocks for SELL transaction
-                if ticker in owned_stocks:
-                    owned_stocks[ticker]['shares'] -= row['Shares']
-                    if owned_stocks[ticker]['shares'] <= 0:
-                        del owned_stocks[ticker]
-                    
-    except FileNotFoundError:
-        print("No previous trades file found. Starting with initial budget.")
+owned_stocks = get_owned_stocks(owned_stocks)
+for stock_id, stock_info in owned_stocks.items():
+    print(f"{stock_info['name']} - Price: {stock_info['price']}, Shares: {stock_info['shares']} - ID: {stock_info['id']}")
     
-    return budget
+print('\n- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -')
 
-budget = update_budget_from_past_trades(budget, owned_stocks)
+# reading our parameters
+#stocks = read_csv('./input/best_tickers.csv')
+stocks = read_csv('/Users/ake/Documents/probable_spoon_a/input/best_tickers.csv')
+whitelisted_tickers = dict(zip(stocks['ticker'], stocks['id']))
 
-print(owned_stocks)
+# this doesnt work right now
+# flagging for any stocks in the avanza data, not in the yahoo data
+#for stock_id in owned_stocks.keys():
+#    if stock_id not in tickers.values():
+#        print(f"Stock with ID {stock_id} is owned, but not tracked.")
+        
+print('- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -')
 
-current_date = datetime.now()
-start_date = current_date - timedelta(weeks = 52)
-start_date_str = start_date.strftime('%Y-%m-%d')
-end_date = current_date - timedelta(days=0)
-end_date_str = end_date.strftime('%Y-%m-%d')
-
-# Load the CSV file
-selected_stocks_df = pd.read_csv('./input/best_tickers.csv')
-# Convert the 'ticker' and 'id' columns to a dictionary
-whitelisted_tickers = dict(zip(selected_stocks_df['ticker'], selected_stocks_df['id']))
-
-# Extracting parameters for each ticker
-whitelisted_tickers_parameters = {}
-for index, row in selected_stocks_df.iterrows():
+# getting donchian parameters
+donchian_parameters = {}
+for index, row in stocks.iterrows():
     ticker = row['ticker']
     params = {
         'lower_length': row['lower_length'],
         'upper_length': row['upper_length']
     }
-    whitelisted_tickers_parameters[ticker] = params
+    donchian_parameters[ticker] = params
 
-last_processed_datetime = None
+# preparing for fetching yahoo data
+current_date = datetime.now()
+start_date_str = (current_date - timedelta(days = 80)).strftime('%Y-%m-%d')
+end_date_str = (current_date - timedelta(days = 1)).strftime('%Y-%m-%d')
 
-def parse_datetime(datetime_str):
-    for fmt in ('%Y-%m-%d %H:%M:%S.%f', '%Y-%m-%d %H:%M:%S'):
-        try:
-            return datetime.strptime(datetime_str, fmt)
-        except ValueError:
-            continue
-    raise ValueError(f"time data '{datetime_str}' does not match any expected format")
+historical_data_dict = {}
+# This takes like a minute, figure out a way to store this more effectively
+print('fetching historical data')
+for ticker, ticker_id in whitelisted_tickers.items():
+    if ticker:
+        # Get historical data for the ticker
+        historical_data = get_data(ticker, start_date_str, end_date_str, "1d")
+        
+        # Extract relevant information and store it in a list of dictionaries
+        data_list = []
+        for index, row in historical_data.iterrows():
+            data = {
+                'high': row['high'],
+                'low': row['low'],
+                'ticker': ticker,
+                'index': index.strftime("%Y-%m-%d")  # Format date as YYYY-MM-DD
+            }
+            data_list.append(data)
+        
+        # Store the data list in the historical_data_dict with the ticker as the key
+        historical_data_dict[ticker] = data_list
+print('done fetching historical data')
+        
+#print(historical_data_dict)
+        
+# Calculating highest and lowest prices based on the Donchian channel parameters
+highest_prices = {}
+lowest_prices = {}
+
+for ticker, data_list in historical_data_dict.items():
+    # Convert upper_length and lower_length to integers
+    upper_length = int(donchian_parameters[ticker]['upper_length'])
+    lower_length = int(donchian_parameters[ticker]['lower_length'])
+    
+    if len(data_list) >= max(upper_length, lower_length):
+        recent_high_data = data_list[-upper_length:]
+        highest_prices[ticker] = max([data['high'] for data in recent_high_data])
+        
+        recent_low_data = data_list[-lower_length:]
+        lowest_prices[ticker] = min([data['low'] for data in recent_low_data])
+# Displaying the results
+#for ticker in tickers.keys():
+#    print(f"{ticker} - Highest price in last {donchian_parameters[ticker]['upper_length']} days: {highest_prices.get(ticker, 'N/A')}")
+#    print(f"{ticker} - Lowest price in last {donchian_parameters[ticker]['lower_length']} days: {lowest_prices.get(ticker, 'N/A')}\n")
 
 
-async def process_realtime_data(realtime_data, tickers, budget):
-    global last_processed_datetime
-
+async def process_realtime_data(data, ticker, budget):
     try:
-        # Parse the real-time data (assuming it's a comma-separated string)
-        orderbook_id, buy_price, sell_price, datetime_str = realtime_data.split(',')
-
-        # Remove leading and trailing spaces from the datetime string
-        datetime_str = datetime_str.strip()
-        current_datetime = parse_datetime(datetime_str)
-
-        # Check if this datetime is newer than the last processed datetime
-        if last_processed_datetime is None or current_datetime > last_processed_datetime:
-            # Look up the ticker based on the orderbook ID
-            ticker = next((key for key, value in tickers.items() if value == int(orderbook_id)), None)
-
-            if ticker:
-                # Get the Donchian channel parameters for this ticker
-                if ticker in whitelisted_tickers_parameters:
-                    params = whitelisted_tickers_parameters[ticker]
-                    lower_length = params['lower_length']
-                    upper_length = params['upper_length']
-
-                # Get historical data for the ticker for the last two years
-                historical_data = get_data(ticker, start_date_str, end_date_str, "1d")
-
-                max_date = historical_data.index.max()
-                min_date_lower = max_date - pd.Timedelta(days=lower_length)
-                min_date_upper = max_date - pd.Timedelta(days=upper_length)
+        orderbook_id, buy_ask, sell_ask, datetime_str = data.split(',')
+        ticker = next((key for key, value in ticker.items() if value == int(orderbook_id)), None)
+        
+        if ticker:
+            # Rounding to 3 so that we can get the buy order in before the price actually hits.
+            highest_price = round(highest_prices.get(ticker), 3)
+            lowest_price = round(lowest_prices.get(ticker), 3)
+            
+            buy_ask = float(buy_ask)
+            sell_ask = float(sell_ask)
+            # Buy logic
+            if orderbook_id not in owned_stocks or owned_stocks[orderbook_id]['shares'] == 0:
+                max_budget_for_stock = min(budget * 0.2, budget)
+                max_affordable_shares = floor(max_budget_for_stock / (sell_ask + calculate_brokerage_fee(sell_ask)))
                 
-                filtered_data_lower = historical_data[(historical_data.index <= max_date) & (historical_data.index >= min_date_lower)]
-                filtered_data_upper = historical_data[(historical_data.index <= max_date) & (historical_data.index >= min_date_upper)]
-
-                lowest_price = min(filtered_data_lower['low']) #, float(buy_price))
-                highest_price = max(filtered_data_upper['high']) #, float(buy_price))
-
-                buy_signal = float(buy_price) >= highest_price
-                sell_signal = float(buy_price) <= lowest_price
-
-                # Print the current price and buy/sell decision
-                current_price = float(buy_price)  # Assuming you want to use the buy price for the current price
-
-                if buy_signal:
-                    if ticker not in owned_stocks or owned_stocks[ticker]['shares'] == 0:
-                        # Calculate the maximum number of shares that can be bought within the budget
-                        max_budget_for_stock = min(budget * 0.4, budget)
-                        max_affordable_shares = floor(max_budget_for_stock / (current_price * 1.0025))  # Including brokerage fee
-                        if max_affordable_shares > 0:
-                            transaction_amount = max_affordable_shares * current_price
-                            fee = calculate_brokerage_fee(transaction_amount)
-                            
-                            if transaction_amount + fee <= max_budget_for_stock:
-
-                                owned_stocks[ticker] = {'shares': max_affordable_shares, 'buy_price': current_price}
-                                budget -= transaction_amount + fee  # Include brokerage fee
-                                
-                                await log_transaction('BUY', ticker, orderbook_id, max_affordable_shares, current_price, current_datetime.strftime('%Y-%m-%d %H:%M:%S'))
-                                print(f"The price of {ticker}, orderbook id: {orderbook_id} is {buy_price} today.\nThe highest price within {upper_length} days was: {highest_price}")
-                                print(cl(f'Therefore we BUY at {current_datetime.strftime("%Y-%m-%d %H:%M:%S")}: {max_affordable_shares} Shares of {ticker} bought at {(current_price * max_affordable_shares) + fee} SEK, of which {fee} SEK fee', 'green'))
-                            else:
-                                print(f'Not enough budget to buy {ticker}. Required:  {transaction_amount + fee} SEK, Available: {max_budget_for_stock} SEK')
-                        else:
-                            #print(f"No shares of {ticker} to sell")
-                            pass
+                if max_affordable_shares > 0:
+                    shares_to_buy = randint(1, max_affordable_shares)
+                    
+                    if sell_ask >= highest_price:
+                        transaction_amount = shares_to_buy * sell_ask + calculate_brokerage_fee(shares_to_buy * sell_ask)
+                        budget = budget - transaction_amount
+                        
+                        owned_stocks[orderbook_id] = {
+                            'name'      : ticker,
+                            'price'     : sell_ask,
+                            'shares'    : shares_to_buy,
+                            'id'        : ticker.get(ticker)
+                        }
+                        
+                        await log_transaction('BUY', ticker, orderbook_id, shares_to_buy, sell_ask, current_date.strftime('%Y-%m-%d %H:%M:%S'))
+                        print(f"At {datetime_str}, {ticker} with id {orderbook_id} is {sell_ask}. The highest price within {upper_length} days was {highest_price}")
+                        print(cl(f"Test At {datetime_str}, we BUY {shares_to_buy} shares of {ticker} at {sell_ask} for a total of {transaction_amount} SEK, of which {calculate_brokerage_fee(shares_to_buy * sell_ask)} SEK fee", 'green'))
                     else:
-                        print(f"Right now, the price of {ticker} is {current_price}, no action needed.\nWe are waiting for price to hit {highest_price}, or {lowest_price}")
-                        pass
-
-                elif sell_signal:
-                    if ticker in owned_stocks and owned_stocks[ticker]['shares'] > 0:
-                        sell_shares = owned_stocks[ticker]['shares']
-                        sell_price = current_price
-                        total_sell_amount = sell_shares * sell_price
-                        fee = calculate_brokerage_fee(total_sell_amount)
-
-                        total_buy_amount = sell_shares * owned_stocks[ticker]['buy_price']
-                        profit = total_sell_amount - total_buy_amount - fee*2  # Subtract brokerage fee from profit
-
-                        await log_transaction('SELL', ticker, orderbook_id, sell_shares, sell_price, current_datetime.strftime('%Y-%m-%d %H:%M:%S'), profit)
-                        print(f"The price of {ticker}, orderbook id: {orderbook_id} is {buy_price} today, and {lower_length} days ago it was: {lowest_price}")
-                        print(cl(f'Therefore we SELL at {current_datetime.strftime("%Y-%m-%d %H:%M:%S")}: {sell_shares} Shares of {ticker} sold at ${sell_price}, Profit: ${profit - fee}, of which {fee} SEK fee', 'green'))
-
-                        # Reset the stock entry after selling
-                        owned_stocks[ticker]['shares'] = 0
-                        owned_stocks[ticker]['buy_price'] = 0
-                        budget += total_sell_amount - fee  # Add back the amount after subtracting the fee
-                    else:
-                        #print(f"No shares of {ticker} to sell")
-                        pass
+                        print(f'At {datetime_str}, {ticker} is {sell_ask}, we buy at {sell_ask}')
                 else:
-                    print(f"Right now, the price of {ticker} is {current_price}, no action needed.\nWe are waiting for price to hit {highest_price}, or {lowest_price}")
                     pass
-
-            # Update the last processed datetime to the current datetime
-            last_processed_datetime = current_datetime
-
+                    #print(f'At {datetime_str}, budget is {budget}, {ticker} costs {sell_ask}')
+                    
+            # Sell logic
+            elif orderbook_id in owned_stocks and owned_stocks[orderbook_id]['shares'] > 0:
+                if(buy_ask <= lowest_price):
+                    sell_shares = owned_stocks[orderbook_id]['shares']
+                    sell_price = buy_ask
+                    
+                    transaction_amount = sell_shares * sell_price
+                    budget = budget + transaction_amount - calculate_brokerage_fee(sell_shares * sell_price)
+                    
+                    await log_transaction('SELL', ticker, orderbook_id, sell_shares, sell_price, current_date.strftime('%Y-%m-%d %H:%M:%S'))
+                    print(f"At {datetime_str}, {ticker} with id {orderbook_id} is {buy_ask}. The lowest price within {lower_length} days was {lowest_price}, therefore")
+                    print(cl(f"At {datetime_str}, we SELL {sell_shares} shares of {ticker} at {buy_ask} for a total of {transaction_amount} SEK, of which {calculate_brokerage_fee(sell_shares * buy_ask)} SEK fee", 'red'))
+                    owned_stocks[orderbook_id]['shares'] = 0
+                else:
+                    print(f'At {datetime_str}, {ticker} is {buy_ask}, we sell at {lowest_price}')
+            else:
+                pass
+        else:
+            pass
     except Exception as e:
-        print(f"Error processing real-time data: {e}")
+        print(f"Error processing realtime data: {e}")
+        
+#realtime_data_dir = './input/'
+realtime_data_dir = '/Users/ake/Documents/probable_spoon_a/input/'
 
-realtime_data_dir = './input/'
-
-processed_lines = set()
+#processed_lines = set()
 realtime_data_name = datetime.now().strftime("%Y-%m-%d")
-
 async def watch_for_data_changes():
+    processed_lines = set()  # Initialize a set to keep track of processed lines
     while True:
         try:
             async for changes in awatch(realtime_data_dir):
@@ -185,9 +163,10 @@ async def watch_for_data_changes():
                     if path.endswith(f'{realtime_data_name}_data.csv'):
                         async with aio_open(path, 'r') as file:
                             async for line in file:
-                                if line.strip() not in processed_lines:
-                                    processed_lines.add(line.strip())
-                                    await process_realtime_data(line.strip(), whitelisted_tickers, budget)
+                                line = line.strip()
+                                if line not in processed_lines:
+                                    processed_lines.add(line)
+                                    await process_realtime_data(line, whitelisted_tickers, budget)
         except Exception as e:
             # Handle exceptions here, you can log them or take appropriate action
             print(f"An error occurred: {e}")
@@ -196,4 +175,4 @@ async def watch_for_data_changes():
 if __name__ == "__main__":
     asyncio.run(watch_for_data_changes())
 
-asyncio.run(main())
+#asyncio.run(main())

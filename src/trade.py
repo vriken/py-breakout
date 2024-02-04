@@ -1,13 +1,10 @@
-from utility import load_dotenv, os, pd, datetime, Avanza, OrderType, asyncio, timedelta
+from utility import load_dotenv, read_csv, datetime, Avanza, OrderType, timedelta, initialize_avanza, getenv
+import asyncio
 
 load_dotenv()
 
 # Avanza credentials
-avanza = Avanza({
-    'username': os.getenv('AVANZA_USERNAME'),
-    'password': os.getenv('AVANZA_PASSWORD'),
-    'totpSecret': os.getenv('AVANZA_TOTP_SECRET')
-})
+avanza = initialize_avanza()
 
 file_path = r"./output/trades.csv"
 
@@ -19,7 +16,7 @@ async def trade(avanza):
 
     while True:
         try:
-            trades = pd.read_csv(file_path)
+            trades = read_csv(file_path)
         except Exception as e:
             print(f"Error reading CSV file: {e}")
             continue
@@ -31,7 +28,7 @@ async def trade(avanza):
                 trade_datetime = datetime.strptime(row['Date'], '%Y-%m-%d %H:%M:%S')
 
                 # Skip the trade if the datetime is more than 5 seconds in the past
-                if trade_datetime < (current_datetime - timedelta(seconds=30)):
+                if trade_datetime < (current_datetime - timedelta(seconds=120)):
                     print(f"Skipping past trade for {row['Ticker']} on {row['Date']}")
                     last_row_processed = index + 1
                     continue
@@ -43,7 +40,7 @@ async def trade(avanza):
                 valid_until = trade_datetime.date()  # Extract just the date part for valid_until
 
                 result = avanza.place_order(
-                    account_id=os.getenv('AVANZA_ACCOUNT_ID'),
+                    account_id=getenv('AVANZA_ACCOUNT_ID'),
                     order_book_id=order_book_id,
                     order_type=order_type,
                     price=price,

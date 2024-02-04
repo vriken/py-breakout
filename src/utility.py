@@ -1,96 +1,95 @@
-from yahoo_fin.stock_info import get_data
-import argparse
-import time
-from pandas_ta import donchian
-from datetime import datetime, timedelta
-import pandas as pd
-from termcolor import colored as cl
-import asyncio
-from visualize import visualize_stock
-from math import floor
-from aiofile import async_open as aio_open
-from watchgod import awatch
-import os
-import csv
-from bayes_opt import BayesianOptimization
-from avanza import Avanza, ChannelType, OrderType
 from dotenv import load_dotenv
+from avanza import Avanza, ChannelType, OrderType
+from os import getenv, path
+from time import sleep
+from pandas import read_csv
+from yahoo_fin.stock_info import get_data
+from datetime import datetime, timedelta
+from math import floor
+from termcolor import colored as cl
+from watchgod import awatch
+from aiofile import async_open as aio_open
+from random import randint
 
-def implement_strategy(stock, investment, lower_length=None, upper_length=None):
-    actions = []
-    in_position = False
-    equity = investment
-    no_of_shares = 0
-
-    # Remove 'date' column processing from here
-    # Instead, use the index as the date
-
-    for i in range(3, len(stock)):
-        current_entry = stock['date'].iloc[i]
-
-        if isinstance(current_entry, pd.Timestamp):
-            # This is a datetime object, can be used directly or formatted
-            current_date_or_datetime = current_entry.strftime('%Y-%m-%d %H:%M:%S')
-        else:
-            # This is likely a date object or another format, use as is or convert/format accordingly
-            current_date_or_datetime = str(current_entry)
-
-        # Buy
-        if stock['high'].iloc[i] >= stock['dcu'].iloc[i] and not in_position:
-            no_of_shares = equity // stock.close.iloc[i]
-            equity -= no_of_shares * stock.close.iloc[i]
-            in_position = True
-            actions.append({'Date': current_date_or_datetime, 'Action': 'BUY', 'Shares': no_of_shares, 'Price': stock.close.iloc[i], 'Volume': stock.volume.iloc[i]})
-            fee = calculate_brokerage_fee(no_of_shares * stock.close.iloc[i])
-            equity -= fee  # Deducting the transaction fee
-
-        # Sell
-        elif stock['low'].iloc[i] < stock['dcl'].iloc[i] and in_position:
-            equity += no_of_shares * stock.close.iloc[i]
-            in_position = False
-            actions.append({'Date': current_date_or_datetime, 'Action': 'SELL', 'Shares': no_of_shares, 'Price': stock.close.iloc[i], 'Volume': stock.volume.iloc[i]})
-            fee = calculate_brokerage_fee(no_of_shares * stock.close.iloc[i])
-            equity -= fee  # Deducting the transaction fee
-
-    # Close
-    if in_position:
-        equity += no_of_shares * stock['close'].iloc[-1]
-        in_position = False
-        fee = calculate_brokerage_fee(no_of_shares * stock['close'].iloc[-1])
-        equity -= fee  # Deducting the transaction fee
-
-    earning = round(equity - investment, 2)
-
-    return actions, equity, earning
-
-# load_dotenv()
-# avanza = Avanza({
-#    'username': os.getenv('AVANZA_USERNAME'),
-#    'password': os.getenv('AVANZA_PASSWORD'),
-#    'totpSecret': os.getenv('AVANZA_TOTP_SECRET')
-# })
-
-def extract_ids_and_update_csv(input_file_path, output_file_path):
-    with open(input_file_path, mode='r') as infile, open(output_file_path, mode='w', newline='') as outfile:
-        reader = csv.DictReader(infile)
-        fieldnames = reader.fieldnames + ['id']  # Add 'id' to the existing field names
-        writer = csv.DictWriter(outfile, fieldnames=fieldnames)
-        writer.writeheader()
-
-        for row in reader:
-            ticker = row['ticker'].split('.')[0]  # Remove the '.ST' part
-            result = avanza.search_for_stock(ticker, 1)
-            
-            if result['totalNumberOfHits'] > 0:
-                row['id'] = result['hits'][0]['topHits'][0]['id']
+avanza = None  # Initialize avanza at the start of your script
+def initialize_avanza():
+    load_dotenv()
+    
+    while True:
+        try:
+            avanza = Avanza({
+                'username': getenv('AVANZA_USERNAME'),
+                'password': getenv('AVANZA_PASSWORD'),
+                'totpSecret': getenv('AVANZA_TOTP_SECRET')
+            })
+            return avanza
+        except Exception as e:
+            if "500" in str(e):
+                print("Received a 500 error. Retrying in 30 seconds...\n")
+                sleep(30)  # Wait for 30 seconds before retrying
             else:
-                row['id'] = 'Not Found'
-            
-            writer.writerow(row)
-            
-# extract_ids_and_update_csv('./input/best_tickers_without_id.csv', './input/best_tickers.csv')
+                raise e  # If it's not a 500 error, raise the exception
 
-async def log_transaction(transaction_type, ticker, orderbook_id, shares, price, transaction_date, profit=None, file_path = 'output/trades.csv'):
+def get_balance():
+    global avanza
+
+    try:
+        data = avanza.get_overview()
+    except:
+        avanza = initialize_avanza()
+        data = avanza.get_overview()
+    
+    budget = 0
+    for account in data['accounts']:
+        if account['id'] == getenv('AVANZA_ACCOUNT_ID'):
+            budget = account['balance']['value']
+            break
+        
+    return budget
+
+    
+def get_owned_stocks(os):
+    global avanza
+    
+    try:
+        data = avanza.get_accounts_positions()
+    except:
+        avanza = initialize_avanza()
+        data = avanza.get_accounts_positions()
+    
+    if 'withOrderbook' in data:
+        for entry in data['withOrderbook']:
+            account = entry['account']
+            if account['id'] == getenv('AVANZA_ACCOUNT_ID'):
+                instrument = entry['instrument']  # Access 'instrument' as a dictionary
+                volume = entry['volume']['value']
+                orderbook_id = instrument['orderbook']['id']
+                orderbook_name = instrument['name']
+                
+                # Access price information if available
+                if 'orderbook' in instrument and 'quote' in instrument['orderbook'] and instrument['orderbook']['quote']['buy'] is not None:
+                    buy_price = instrument['orderbook']['quote']['buy']['value']
+                    os[orderbook_id] = {'name': orderbook_name, 'price': buy_price, 'shares': volume, 'id': orderbook_id}
+                else:
+                    break
+    else:
+        print("No 'withOrderbook' key found in the data dictionary.")
+    
+    return os  # Return the dictionary containing owned stocks data
+
+def parse_datetime(datetime_str):
+    for fmt in ('%Y-%m-%d %H:%M:%S.%f', '%Y-%m-%d %H:%M:%S'):
+        try:
+            return datetime.strptime(datetime_str, fmt)
+        except ValueError:
+            continue
+    raise ValueError(f"time data '{datetime_str}' does not match any expected format")
+
+def calculate_brokerage_fee(transaction_amount):
+    fee = transaction_amount * 0.0025  # 0.25%
+    return max(fee, 1)  # Minimum fee is 1 SEK
+
+async def log_transaction(transaction_type, ticker, orderbook_id, shares, price, transaction_date, profit=None, file_path = '/Users/ake/Documents/probable_spoon_a/output/trades.csv'): #output/trades.csv
     # Parse the transaction date to a datetime object
     transaction_datetime = datetime.strptime(transaction_date, '%Y-%m-%d %H:%M:%S')
 
@@ -113,73 +112,3 @@ async def log_transaction(transaction_type, ticker, orderbook_id, shares, price,
                 transaction_data.append('')  # Append empty string for non-sell transactions
 
             await file.write(','.join(transaction_data) + '\n')
-
-async def get_historical_data(ticker, start_date, end_date, interval):
-    loop = asyncio.get_running_loop()
-    data = await loop.run_in_executor(None, get_data, ticker, start_date, end_date, True, interval)
-    data = data.reset_index().rename(columns={'index': 'date'})
-    return data
-
-def get_historical_data_sync(ticker, start_date, end_date, interval):
-    return asyncio.run(get_historical_data(ticker, start_date, end_date, interval))
-
-def calculate_brokerage_fee(transaction_amount):
-    fee = transaction_amount * 0.0025  # 0.25%
-    return max(fee, 1)  # Minimum fee is 1 SEK
-
-def distribute_budget(stock_prices, budget):
-    # Sort stocks by price
-    sorted_stocks = sorted(stock_prices.items(), key=lambda x: x[1])
-    owned_shares = {stock: 0 for stock, price in sorted_stocks}
-
-    # Buy at least one share of each stock, starting with the cheapest
-    for stock, price in sorted_stocks:
-        if budget >= price:
-            owned_shares[stock] += 1
-            budget -= price
-        else:
-            break  # Stop if we can't afford even one share of the current stock
-
-    # Distribute remaining budget for additional shares
-    while budget >= sorted_stocks[0][1]:
-        for stock, price in sorted_stocks:
-            if budget >= price and owned_shares[stock] > 0:  # Only consider stocks already bought
-                owned_shares[stock] += 1
-                budget -= price
-            if budget < sorted_stocks[0][1]:  # Break if not enough budget for the cheapest stock
-                break
-
-    return owned_shares, budget
-
-def stock_picker(csv_file, num_stocks=100, output_csv_file='100_tickers.csv'):
-    # Load the data
-    df = pd.read_csv(csv_file)
-
-    # Calculate the difference between lower_length and upper_length
-    df['length_difference'] = abs(df['upper_length'] - df['lower_length'])
-
-    # Filter and sort the DataFrame
-    # Sort first by target in descending order, then by smallest length_difference
-    filtered_df = df.sort_values(by=['target', 'length_difference'], ascending=[False, True])
-
-    # Select the top 'num_stocks' stocks
-    selected_stocks = filtered_df.head(num_stocks)
-
-    # Write selected stocks to the output CSV file
-    selected_stocks[['ticker', 'target', 'lower_length', 'upper_length', 'id']].to_csv(output_csv_file, index=False)
-
-# Call the function to select and write the top 30 stocks to 'selected_stocks.csv'
-# stock_picker('./input/all_ticker_optimized_without_id.csv', 100, './input/100_tickers.csv')
-
-
-#TODO:
-#re-write this to look at the amount of trades made.
-def categorize_intensity(lower_length):
-    if lower_length < 3:
-        return 0 #high
-    elif lower_length > 10:
-        return 1 #low
-    else:
-        return 2 #medium
-    
-    

@@ -1,6 +1,5 @@
-from utility import pd, datetime, timedelta, get_historical_data_sync, implement_strategy, BayesianOptimization, extract_ids_and_update_csv, load_dotenv, Avanza
+from utility import pd, datetime, timedelta, get_historical_data_sync, implement_strategy, BayesianOptimization, extract_ids_and_update_csv, load_dotenv, Avanza, getenv
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from os import getenv
 
 # Load ticker data from a CSV file
 ticker_df = pd.read_csv('./input/best_tickers.csv')
@@ -17,7 +16,7 @@ def objective_for_ticker(ticker, lower_length, upper_length):
     try:
         print(f"Processing {ticker}")
         current_date = datetime.now()
-        start_date = current_date - timedelta(weeks = 52)
+        start_date = current_date - timedelta(days = 52)
         start_date_str = start_date.strftime('%Y-%m-%d')
         end_date = current_date - timedelta(days=0)
         end_date_str = end_date.strftime('%Y-%m-%d')
