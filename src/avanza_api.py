@@ -15,9 +15,9 @@ def callback(data):
     sell_price = data['data']['sellPrice']
     updated_timestamp = data['data']['updated']
     
-    updated_datetime = datetime.fromtimestamp(updated_datetime / 1000.0)
+    updated_datetime = datetime.fromtimestamp(updated_timestamp / 1000.0)
     
-    with open(f"/Users/ake/Documents/probable_spoon_a/input/{current_date}_data.csv", 'a') as file:
+    with open(f"/Users/ake/Documents/probable_spoon_a/input/realtime_data_{current_date}_data.csv", 'a') as file:
         file.write(f"{orderbook_id}, {buy_price}, {sell_price}, {updated_datetime}\n")
 
 

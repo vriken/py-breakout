@@ -8,7 +8,7 @@ do
    echo $PID
 
    # Countdown for 15 minutes (900 seconds)
-   for ((i=900; i>0; i--)); do
+   for ((i=90; i>0; i--)); do
       sleep 1
       # Check if the remaining time is a multiple of 30
       if (( i % 30 == 0 )); then
@@ -17,11 +17,11 @@ do
       fi
    done
 
-   echo -ne "\rRestarting the script now.           "
+   echo -ne "\rRestarting the script now.           \n"
    
    # Kill the process
    echo $PID
    kill $PID
    # Wait a moment before restarting
-   sleep 5
+   sleep 3
 done

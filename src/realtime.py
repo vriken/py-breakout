@@ -37,7 +37,8 @@ for index, row in stocks.iterrows():
 
 # preparing for fetching yahoo data
 current_date = datetime.now()
-start_date_str = (current_date - timedelta(days = 80)).strftime('%Y-%m-%d')
+#start_date_str = (current_date - timedelta(days = 80)).strftime('%Y-%m-%d')
+start_date_str = (current_date - timedelta(days = max(int(donchian_parameters[ticker]['upper_length'])))).strftime('%Y-%m-%d')
 end_date_str = (current_date - timedelta(days = 1)).strftime('%Y-%m-%d')
 
 historical_data_dict = {}
@@ -106,29 +107,31 @@ async def process_realtime_data(data, ticker, budget):
                 if max_affordable_shares > 0:
                     shares_to_buy = randint(1, max_affordable_shares)
                     
-                    if sell_ask >= highest_price:
+                    if sell_ask > highest_price:
                         transaction_amount = shares_to_buy * sell_ask + calculate_brokerage_fee(shares_to_buy * sell_ask)
                         budget = budget - transaction_amount
                         
+                        #print('error is here')
                         owned_stocks[orderbook_id] = {
                             'name'      : ticker,
                             'price'     : sell_ask,
                             'shares'    : shares_to_buy,
-                            'id'        : ticker.get(ticker)
+                            'id'        : orderbook_id
                         }
                         
                         await log_transaction('BUY', ticker, orderbook_id, shares_to_buy, sell_ask, current_date.strftime('%Y-%m-%d %H:%M:%S'))
                         print(f"At {datetime_str}, {ticker} with id {orderbook_id} is {sell_ask}. The highest price within {upper_length} days was {highest_price}")
                         print(cl(f"Test At {datetime_str}, we BUY {shares_to_buy} shares of {ticker} at {sell_ask} for a total of {transaction_amount} SEK, of which {calculate_brokerage_fee(shares_to_buy * sell_ask)} SEK fee", 'green'))
                     else:
-                        print(f'At {datetime_str}, {ticker} is {sell_ask}, we buy at {sell_ask}')
+                        print(f'At {datetime_str}, {ticker} is {sell_ask}, we buy at {highest_price}')
                 else:
+                    #print(f'no budget for {ticker}')
                     pass
                     #print(f'At {datetime_str}, budget is {budget}, {ticker} costs {sell_ask}')
                     
             # Sell logic
             elif orderbook_id in owned_stocks and owned_stocks[orderbook_id]['shares'] > 0:
-                if(buy_ask <= lowest_price):
+                if(buy_ask < lowest_price):
                     sell_shares = owned_stocks[orderbook_id]['shares']
                     sell_price = buy_ask
                     
@@ -160,7 +163,7 @@ async def watch_for_data_changes():
             async for changes in awatch(realtime_data_dir):
                 for change in changes:
                     _, path = change
-                    if path.endswith(f'{realtime_data_name}_data.csv'):
+                    if path.endswith(f'realtime_data_{realtime_data_name}_data.csv'):
                         async with aio_open(path, 'r') as file:
                             async for line in file:
                                 line = line.strip()
