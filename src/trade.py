@@ -6,7 +6,7 @@ load_dotenv()
 # Avanza credentials
 avanza = initialize_avanza()
 
-file_path = r"./output/trades.csv"
+file_path = r"/Users/ake/Documents/probable_spoon_a/output/trades.csv"
 
 # Track the last row processed
 last_row_processed = 0

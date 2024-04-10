@@ -1,15 +1,19 @@
 from dotenv import load_dotenv
+import avanza
 from avanza import Avanza, ChannelType, OrderType
 from os import getenv, path
 from time import sleep
-from pandas import read_csv
+import csv
+from pandas import read_csv, DataFrame, to_datetime, Timestamp
 from yahoo_fin.stock_info import get_data
 from datetime import datetime, timedelta
 from math import floor
 from termcolor import colored as cl
 from watchgod import awatch
 from aiofile import async_open as aio_open
+from bayes_opt import BayesianOptimization
 from random import randint
+import pandas_ta as ta
 
 avanza = None  # Initialize avanza at the start of your script
 def initialize_avanza():
@@ -112,3 +116,68 @@ async def log_transaction(transaction_type, ticker, orderbook_id, shares, price,
                 transaction_data.append('')  # Append empty string for non-sell transactions
 
             await file.write(','.join(transaction_data) + '\n')
+            
+def implement_strategy(stock, investment, lower_length=None, upper_length=None):
+    actions = []
+    in_position = False
+    equity = investment
+    no_of_shares = 0
+
+    # Remove 'date' column processing from here
+    # Instead, use the index as the date
+
+    for i in range(3, len(stock)):
+        current_entry = stock['date'].iloc[i]
+
+        if isinstance(current_entry, Timestamp):
+            # This is a datetime object, can be used directly or formatted
+            current_date_or_datetime = current_entry.strftime('%Y-%m-%d %H:%M:%S')
+        else:
+            # This is likely a date object or another format, use as is or convert/format accordingly
+            current_date_or_datetime = str(current_entry)
+
+        # Buy
+        if stock['high'].iloc[i] >= stock['dcu'].iloc[i] and not in_position:
+            no_of_shares = equity // stock.close.iloc[i]
+            equity -= no_of_shares * stock.close.iloc[i]
+            in_position = True
+            actions.append({'Date': current_date_or_datetime, 'Action': 'BUY', 'Shares': no_of_shares, 'Price': stock.close.iloc[i], 'Volume': stock.volume.iloc[i]})
+            fee = calculate_brokerage_fee(no_of_shares * stock.close.iloc[i])
+            equity -= fee  # Deducting the transaction fee
+
+        # Sell
+        elif stock['low'].iloc[i] <= stock['dcl'].iloc[i] and in_position:
+            equity += no_of_shares * stock.close.iloc[i]
+            in_position = False
+            actions.append({'Date': current_date_or_datetime, 'Action': 'SELL', 'Shares': no_of_shares, 'Price': stock.close.iloc[i], 'Volume': stock.volume.iloc[i]})
+            fee = calculate_brokerage_fee(no_of_shares * stock.close.iloc[i])
+            equity -= fee  # Deducting the transaction fee
+
+    # Close
+    if in_position:
+        equity += no_of_shares * stock['close'].iloc[-1]
+        in_position = False
+        fee = calculate_brokerage_fee(no_of_shares * stock['close'].iloc[-1])
+        equity -= fee  # Deducting the transaction fee
+
+    earning = round(equity - investment, 2)
+
+    return actions, equity, earning
+
+def extract_ids_and_update_csv(input_file_path, output_file_path):
+    with open(input_file_path, mode='r') as infile, open(output_file_path, mode='w', newline='') as outfile:
+        reader = csv.DictReader(infile)
+        fieldnames = reader.fieldnames + ['id']  # Add 'id' to the existing field names
+        writer = csv.DictWriter(outfile, fieldnames=fieldnames)
+        writer.writeheader()
+
+        for row in reader:
+            ticker = row['ticker'].split('.')[0]  # Remove the '.ST' part
+            result = avanza.search_for_stock(ticker, 1)
+            
+            if result['totalNumberOfHits'] > 0:
+                row['id'] = result['hits'][0]['topHits'][0]['id']
+            else:
+                row['id'] = 'Not Found'
+            
+            writer.writerow(row)
