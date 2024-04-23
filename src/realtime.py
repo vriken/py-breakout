@@ -49,23 +49,31 @@ print(budget)
 print('fetching historical data')
 for ticker, ticker_id in whitelisted_tickers.items():
     if ticker:
-        # Get historical data for the ticker
-        historical_data = get_data(ticker, start_date_str, end_date_str, "1d")
-        
-        # Extract relevant information and store it in a list of dictionaries
-        data_list = []
-        for index, row in historical_data.iterrows():
-            data = {
-                'high': row['high'],
-                'low': row['low'],
-                'ticker': ticker,
-                'index': index.strftime("%Y-%m-%d")  # Format date as YYYY-MM-DD
-            }
-            data_list.append(data)
-        
-        # Store the data list in the historical_data_dict with the ticker as the key
-        historical_data_dict[ticker] = data_list
-print('done fetching historical data')
+        try:
+            # Get historical data for the ticker
+            historical_data = get_data(ticker, start_date_str, end_date_str, "1d")
+            
+            # Extract relevant information and store it in a list of dictionaries
+            data_list = []
+            for index, row in historical_data.iterrows():
+                data = {
+                    'high': row['high'],
+                    'low': row['low'],
+                    'ticker': ticker,
+                    'index': index.strftime("%Y-%m-%d")  # Format date as YYYY-MM-DD
+                }
+                data_list.append(data)
+            
+            # Store the data list in the historical_data_dict with the ticker as the key
+            historical_data_dict[ticker] = data_list
+
+        except Exception as e:
+            # Log the error or handle it as needed
+            print(f"Error fetching data for ticker {ticker}: {e}")
+            # Optionally, continue to next ticker or perform other error recovery actions
+
+print('Done fetching historical data')
+
         
 #print(historical_data_dict)
         
@@ -194,8 +202,11 @@ async def watch_for_data_changes():
             # Handle exceptions here, you can log them or take appropriate action
             print(f"An error occurred: {e}")
 
-# Run the function in an asyncio event loop
-if __name__ == "__main__":
-    asyncio.run(watch_for_data_changes())
 
-#asyncio.run(main())
+
+async def main():
+    """Entry point for the realtime module when called from main.py."""
+    await watch_for_data_changes()
+
+if __name__ == "__main__":
+    asyncio.run(main())

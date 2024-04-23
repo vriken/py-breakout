@@ -15,7 +15,7 @@ from bayes_opt import BayesianOptimization
 from random import randint
 import pandas_ta as ta
 
-avanza = None  # Initialize avanza at the start of your script
+#avanza = None  # Initialize avanza at the start of your script
 def initialize_avanza():
     load_dotenv()
     
