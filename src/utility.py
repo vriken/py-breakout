@@ -81,19 +81,11 @@ def get_owned_stocks(os):
     
     return os  # Return the dictionary containing owned stocks data
 
-def parse_datetime(datetime_str):
-    for fmt in ('%Y-%m-%d %H:%M:%S.%f', '%Y-%m-%d %H:%M:%S'):
-        try:
-            return datetime.strptime(datetime_str, fmt)
-        except ValueError:
-            continue
-    raise ValueError(f"time data '{datetime_str}' does not match any expected format")
-
 def calculate_brokerage_fee(transaction_amount):
     fee = transaction_amount * 0.0025  # 0.25%
     return max(fee, 1)  # Minimum fee is 1 SEK
 
-async def log_transaction(transaction_type, ticker, orderbook_id, shares, price, transaction_date, profit=None, file_path = '/Users/ake/Documents/probable_spoon_a/output/trades.csv'): #output/trades.csv
+async def log_transaction(transaction_type, ticker, orderbook_id, shares, price, transaction_date, profit=None, file_path = '../output/trades.csv'): #output/trades.csv
     # Parse the transaction date to a datetime object
     transaction_datetime = datetime.strptime(transaction_date, '%Y-%m-%d %H:%M:%S')
 

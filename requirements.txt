@@ -1,0 +1,12 @@
+aiofile==3.8.8
+avanza_api==9.0.0
+backoff==2.2.1
+bayesian_optimization==1.4.3
+matplotlib==3.8.2
+pandas==2.2.2
+pandas_ta==0.3.14b0
+python-dotenv==1.0.1
+termcolor==2.4.0
+watchgod==0.8.2
+websockets==10.4
+yahoo_fin==0.8.9.1

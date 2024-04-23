@@ -12,7 +12,7 @@ def callback(data):
         sell_price = data['data']['sellPrice']
         updated_timestamp = data['data']['updated']
         updated_datetime = datetime.fromtimestamp(updated_timestamp / 1000.0)
-        file_path = f"/Users/ake/Documents/probable_spoon_a/input/realtime_data_{current_date}_data.csv"
+        file_path = f"../input/realtime_data_{current_date}_data.csv"
         with open(file_path, 'a') as file:
             file.write(f"{orderbook_id}, {buy_price}, {sell_price}, {updated_datetime}\n")
     except Exception:
@@ -33,7 +33,7 @@ async def subscribe_to_channel(avanza, whitelisted_tickers):
 
 def main(avanza):
     try:
-        stocks = read_csv('/Users/ake/Documents/probable_spoon_a/input/best_tickers.csv')
+        stocks = read_csv('../input/best_tickers.csv')
         whitelisted_tickers = dict(zip(stocks['ticker'], stocks['id']))
         loop = asyncio.get_event_loop()
         loop.run_until_complete(resilient_subscribe(avanza, whitelisted_tickers))

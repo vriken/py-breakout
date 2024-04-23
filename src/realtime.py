@@ -1,4 +1,4 @@
-from utility import get_balance, get_owned_stocks, read_csv, parse_datetime, get_data, datetime, timedelta, floor, calculate_brokerage_fee, log_transaction, cl, awatch, aio_open, randint
+from utility import get_balance, get_owned_stocks, read_csv, get_data, datetime, timedelta, floor, calculate_brokerage_fee, log_transaction, cl, awatch, aio_open, randint
 import asyncio
 
 budget = get_balance()
@@ -15,15 +15,8 @@ for stock_id, stock_info in owned_stocks.items():
 print('\n- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -')
 
 # reading our parameters
-#stocks = read_csv('./input/best_tickers.csv')
-stocks = read_csv('/Users/ake/Documents/probable_spoon_a/input/best_tickers.csv')
+stocks = read_csv('../input/best_tickers.csv')
 whitelisted_tickers = dict(zip(stocks['ticker'], stocks['id']))
-
-# this doesnt work right now
-# flagging for any stocks in the avanza data, not in the yahoo data
-#for stock_id in owned_stocks.keys():
-#    if stock_id not in tickers.values():
-#        print(f"Stock with ID {stock_id} is owned, but not tracked.")
         
 print('- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -')
 
@@ -40,7 +33,6 @@ for index, row in stocks.iterrows():
 # preparing for fetching yahoo data
 current_date = datetime.now()
 start_date_str = (current_date - timedelta(days = 80)).strftime('%Y-%m-%d')
-#start_date_str = (current_date - timedelta(days = max(int(donchian_parameters[ticker]['upper_length'])))).strftime('%Y-%m-%d')
 end_date_str = (current_date - timedelta(days = 1)).strftime('%Y-%m-%d')
 
 historical_data_dict = {}
@@ -179,8 +171,7 @@ async def process_realtime_data(data, ticker, budget):
     except Exception as e:
         print(f"Error processing realtime data: {e}")
         
-#realtime_data_dir = './input/'
-realtime_data_dir = '/Users/ake/Documents/probable_spoon_a/input/'
+realtime_data_dir = '../input/'
 
 #processed_lines = set()
 realtime_data_name = datetime.now().strftime("%Y-%m-%d")

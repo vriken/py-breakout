@@ -2,7 +2,7 @@ from utility import read_csv, DataFrame, to_datetime, datetime, timedelta, get_d
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Load ticker data from a CSV file
-ticker_df = read_csv('/Users/ake/Documents/probable_spoon_a/input/best_tickers.csv')
+ticker_df = read_csv('../input/best_tickers.csv')
 ticker_list = ticker_df[['id', 'ticker']].to_dict('records')
 
 
@@ -68,4 +68,4 @@ with ThreadPoolExecutor(max_workers=5) as executor:
 
 # Save results to a CSV file
 result_df = DataFrame(results, columns=['id', 'ticker', 'target', 'lower_length', 'upper_length'])
-result_df.to_csv('/Users/ake/Documents/probable_spoon_a/output/optimized_tickers_with_id.csv', index=False)
+result_df.to_csv('../output/optimized_tickers_with_id.csv', index=False)

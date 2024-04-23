@@ -1,7 +1,8 @@
 from utility import read_csv, datetime, OrderType, timedelta, getenv
 import asyncio
 
-file_path = r"/Users/ake/Documents/probable_spoon_a/output/trades.csv"
+file_path = r"../output/trades.csv"
+
 
 # Track the last row processed
 last_row_processed = 0
