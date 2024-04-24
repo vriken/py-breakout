@@ -1,6 +1,9 @@
 from utility import get_balance, get_owned_stocks, read_csv, get_data, datetime, timedelta, floor, calculate_brokerage_fee, log_transaction, cl, awatch, aio_open, randint
 import asyncio
 
+from dotenv import load_dotenv
+load_dotenv()
+
 budget = get_balance()
 significant_impact_threshold = 0.25
 total_account_value = 4000 #update this to update automatically
@@ -15,7 +18,7 @@ for stock_id, stock_info in owned_stocks.items():
 print('\n- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -')
 
 # reading our parameters
-stocks = read_csv('../input/best_tickers.csv')
+stocks = read_csv('input/best_tickers.csv')
 whitelisted_tickers = dict(zip(stocks['ticker'], stocks['id']))
         
 print('- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -')
@@ -171,7 +174,7 @@ async def process_realtime_data(data, ticker, budget):
     except Exception as e:
         print(f"Error processing realtime data: {e}")
         
-realtime_data_dir = '../input/'
+realtime_data_dir = 'input/'
 
 #processed_lines = set()
 realtime_data_name = datetime.now().strftime("%Y-%m-%d")

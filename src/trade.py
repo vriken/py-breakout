@@ -1,7 +1,10 @@
 from utility import read_csv, datetime, OrderType, timedelta, getenv
 import asyncio
 
-file_path = r"../output/trades.csv"
+from dotenv import load_dotenv
+load_dotenv()
+
+file_path = r"output/trades.csv"
 
 
 # Track the last row processed

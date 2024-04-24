@@ -3,13 +3,13 @@ import logging
 import asyncio
 from utility import initialize_avanza
 import avanza_api
+from dotenv import load_dotenv
 import trade
 import realtime
 
 # Configure logging
-#logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# Initialize Avanza only once
 avanza = initialize_avanza()
 
 # Script configuration

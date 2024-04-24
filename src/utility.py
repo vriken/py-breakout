@@ -15,10 +15,10 @@ from bayes_opt import BayesianOptimization
 from random import randint
 import pandas_ta as ta
 
-#avanza = None  # Initialize avanza at the start of your script
+# avanza = None  # Initialize avanza at the start of your script
 def initialize_avanza():
     load_dotenv()
-    
+
     while True:
         try:
             avanza = Avanza({
@@ -30,7 +30,7 @@ def initialize_avanza():
         except Exception as e:
             if "500" in str(e):
                 print("Received a 500 error. Retrying in 30 seconds...\n")
-                sleep(30)  # Wait for 30 seconds before retrying
+                sleep(5)  # Wait for 30 seconds before retrying
             else:
                 raise e  # If it's not a 500 error, raise the exception
 
@@ -85,7 +85,7 @@ def calculate_brokerage_fee(transaction_amount):
     fee = transaction_amount * 0.0025  # 0.25%
     return max(fee, 1)  # Minimum fee is 1 SEK
 
-async def log_transaction(transaction_type, ticker, orderbook_id, shares, price, transaction_date, profit=None, file_path = '../output/trades.csv'): #output/trades.csv
+async def log_transaction(transaction_type, ticker, orderbook_id, shares, price, transaction_date, profit=None, file_path = 'output/trades.csv'): #output/trades.csv
     # Parse the transaction date to a datetime object
     transaction_datetime = datetime.strptime(transaction_date, '%Y-%m-%d %H:%M:%S')
 
