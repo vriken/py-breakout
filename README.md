@@ -1,5 +1,5 @@
 # How to use
- 1. ```Create .env file containing your avanza username, password totp secret and account id in the following format```
+ 1. Create .env file containing your avanza username, password totp secret and account id in the following format
  ```
     AVANZA_USERNAME="yourusername"
     AVANZA_USERNAME="yourpassword"
