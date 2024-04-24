@@ -1,3 +1,10 @@
-Script that buys and sells stocks, uses yahoo finance and avanza APIs for historical, and realtime data respectively.
-You need a list of tickers that you run optimize.py on
-Then when you have this, create a dict with whitelisted_tickers and run realtime.py on that dict.
+# How to use
+ 1. ```Create .env file containing your avanza username, password totp secret and account id in the following format```
+ ```
+    AVANZA_USERNAME="yourusername"
+    AVANZA_USERNAME="yourpassword"
+    AVANZA_USERNAME="yourtotpsecret"
+    AVANZA_USERNAME="youraccountid"
+ ```
+ 3. run ```docker-compose up --build```
+ 4. If you already built, just run docker-compose up
