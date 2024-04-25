@@ -30,8 +30,10 @@ def initialize_avanza():
         except Exception as e:
             if "500" in str(e):
                 print("Received a 500 error. Retrying in 30 seconds...\n")
-                sleep(5)  # Wait for 30 seconds before retrying
+                sleep(60)  # Wait for 30 seconds before retrying
             else:
+                print(f"Failed to authenticate: {e}")
+                sleep(10)
                 raise e  # If it's not a 500 error, raise the exception
 
 def get_balance():

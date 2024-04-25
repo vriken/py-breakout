@@ -10,7 +10,7 @@ import realtime
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-avanza = initialize_avanza()
+# avanza = initialize_avanza()
 
 # Script configuration
 scripts = {
@@ -28,28 +28,31 @@ scripts = {
     }
 }
 
-def run_script(name, avanza=None):
-    """Run a script with optional Avanza object, ensuring an event loop for asyncio operations."""
+def run_script(name, avanza):
+    """Run a script with Avanza object, handling re-authentication on 401/402 errors."""
     script_info = scripts[name]
     module = script_info['module']
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-
-    try:
-        if script_info['needs_avanza'] and avanza:
+    while True:  # Continuously try to run the script unless a critical error occurs
+        try:
             coroutine = module.main(avanza)
-        else:
-            coroutine = module.main()
-        loop.run_until_complete(coroutine)
-    except Exception as e:
-        logging.error(f"{name} encountered an error: {e}")
-        # Optionally handle restart logic here, but consider implications on Avanza object
-    finally:
-        loop.close()
+            loop.run_until_complete(coroutine)
+            break  # Exit loop if coroutine completes successfully
+        except Exception as e:
+            if '401' in str(e) or '402' in str(e):
+                logging.error(f"Authentication error encountered: {e}. Re-authenticating...")
+                avanza = initialize_avanza()  # Reinitialize the Avanza object
+            else:
+                logging.error(f"{name} encountered a critical error: {e}")
+                break  # Exit loop if a non-authentication related error occurs
+        finally:
+            loop.close()
 
 def start_script_in_thread(name):
-    """Start a script in a separate thread, passing Avanza if needed."""
-    thread = threading.Thread(target=run_script, args=(name, avanza if scripts[name]['needs_avanza'] else None))
+    """Start a script in a separate thread, ensuring it has the necessary Avanza object."""
+    avanza = initialize_avanza() if scripts[name]['needs_avanza'] else None
+    thread = threading.Thread(target=run_script, args=(name, avanza))
     scripts[name]['thread'] = thread
     thread.start()
     return thread

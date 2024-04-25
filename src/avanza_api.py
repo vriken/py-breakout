@@ -3,12 +3,6 @@ import asyncio
 import backoff
 import websockets
 
-# from utility import initialize_avanza
-# avanza = initialize_avanza()
-# from dotenv import load_dotenv
-# load_dotenv()
-
-
 # Callback function to process data received from the subscription
 def callback(data):
     try:
