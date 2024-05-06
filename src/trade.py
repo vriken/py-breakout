@@ -1,14 +1,23 @@
 from utility import read_csv, datetime, OrderType, timedelta, getenv
 import asyncio
-
+# import smtplib
+# from email.mime.text import MIMEText
 from dotenv import load_dotenv
 load_dotenv()
 
 file_path = r"output/trades.csv"
 
-
 # Track the last row processed
 last_row_processed = 0
+
+# def send_email(subject, body):
+#     msg = MIMEText(body)
+#     msg['Subject'] = subject
+#     msg['From'] = getenv('EMAIL_SENDER')
+#     msg['To'] = getenv('EMAIL_RECEIVER')
+#     with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
+#         smtp.login(getenv('EMAIL_SENDER'), getenv('EMAIL_PASSWORD'))
+#         smtp.sendmail(getenv('EMAIL_SENDER'), getenv('EMAIL_RECEIVER'), msg.as_string())
 
 async def trade(avanza):
     global last_row_processed
@@ -43,6 +52,8 @@ async def trade(avanza):
                     valid_until=valid_until,
                     volume=volume
                 )
+                # email_body = f"Trade Executed: {result}"
+                # send_email("Trade Notification", email_body)
                 print(result)
                 last_row_processed = index + 1
             except Exception as e:
