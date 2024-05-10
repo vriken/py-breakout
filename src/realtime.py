@@ -1,8 +1,11 @@
 from utility import get_balance, get_owned_stocks, read_csv, get_data, datetime, timedelta, floor, calculate_brokerage_fee, log_transaction, cl, awatch, aio_open, randint
 import asyncio
-
+import asyncio
+import redis.asyncio as aioredis  # Use the async version of the Redis client
+import os
 from dotenv import load_dotenv
 load_dotenv()
+base_path = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 
 budget = get_balance()
 significant_impact_threshold = 0.25
@@ -18,7 +21,7 @@ for stock_id, stock_info in owned_stocks.items():
 print('\n- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -')
 
 # reading our parameters
-stocks = read_csv('input/best_tickers.csv')
+stocks = read_csv(f'{base_path}/input/best_tickers.csv')
 whitelisted_tickers = dict(zip(stocks['ticker'], stocks['id']))
         
 print('- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -')
@@ -63,9 +66,7 @@ for ticker, ticker_id in whitelisted_tickers.items():
             historical_data_dict[ticker] = data_list
 
         except Exception as e:
-            # Log the error or handle it as needed
             print(f"Error fetching data for ticker {ticker}: {e}")
-            # Optionally, continue to next ticker or perform other error recovery actions
 
 print('Done fetching historical data')
 
@@ -87,114 +88,82 @@ for ticker, data_list in historical_data_dict.items():
         
         recent_low_data = data_list[-lower_length:]
         lowest_prices[ticker] = min([data['low'] for data in recent_low_data])
-        
 
-async def process_realtime_data(data, ticker, budget):
+async def process_realtime_data(orderbook_id, redis_data):
     try:
-        orderbook_id, buy_ask, sell_ask, datetime_str = data.split(',')
-        ticker = next((key for key, value in ticker.items() if value == int(orderbook_id)), None)
-        
-        if ticker:            
-            datetime_str = datetime_str.strip()
-            datetime_obj = datetime.strptime(datetime_str, "%Y-%m-%d %H:%M:%S")
-            
-            if datetime_obj <= (datetime.now() - timedelta(seconds=5)):
-                return
-            
-            # Rounding to 3 so that we can get the buy order in before the price actually hits.
-            highest_price = round(highest_prices.get(ticker), 3)
-            lowest_price = round(lowest_prices.get(ticker), 3)
-            
-            buy_ask = float(buy_ask)
-            sell_ask = float(sell_ask)
+        buy_ask = float(redis_data['buyPrice'])
+        sell_ask = float(redis_data['sellPrice'])
+        datetime_str = redis_data['updated']
 
-            # Buy logic
-            if orderbook_id not in owned_stocks.keys() or str(orderbook_id) not in owned_stocks.keys():
-                max_budget_for_stock = get_balance()
-                sell_ask_price = sell_ask 
-                max_affordable_shares = floor(max_budget_for_stock / sell_ask_price)
+        datetime_obj = datetime.strptime(datetime_str, "%Y-%m-%d %H:%M:%S")
+        if datetime_obj <= (datetime.now() - timedelta(seconds=5)):
+            # print(f"Data for {orderbook_id} is too old.")
+            return
+        
+        highest_price = round(highest_prices.get(ticker), 3)
+        lowest_price = round(lowest_prices.get(ticker), 3)
+
+        owned_stocks = {}
+        # owned_stocks = get_owned_stocks(owned_stocks)
+        budget = get_balance()
+
+        # Buy logic
+        if orderbook_id not in owned_stocks.keys() or str(orderbook_id) not in owned_stocks.keys():
+            max_budget_for_stock = get_balance()
+            max_affordable_shares = floor(max_budget_for_stock / sell_ask)
+            stock_purchase_impact = (sell_ask + calculate_brokerage_fee(sell_ask)) * max_affordable_shares
+            if max_affordable_shares > 0:
+                shares_to_buy = max_affordable_shares if stock_purchase_impact < budget * 0.2 else randint(1, max_affordable_shares)
+                if shares_to_buy >= 1 and sell_ask > highest_price:
+                    transaction_amount = shares_to_buy * sell_ask + calculate_brokerage_fee(shares_to_buy * sell_ask)
+                    if transaction_amount <= budget and transaction_amount > 250:  # Ensuring budget sufficiency and minimum transaction amount
+                        budget -= transaction_amount  # Update the budget
+                        owned_stocks[orderbook_id] = {'price': sell_ask, 'shares': shares_to_buy}
+                        current_date = datetime.now()
+                        await log_transaction('BUY', orderbook_id, shares_to_buy, sell_ask, current_date.strftime('%Y-%m-%d %H:%M:%S'), f'{base_path}/output/trades.csv')
+                        print(f"BUY {shares_to_buy} shares of {orderbook_id} at {sell_ask}.")
+                    else:
+                        print(f"Insufficient budget or transaction amount too low for {orderbook_id}.")
+                else:
+                    print(f"Not buying any shares of {orderbook_id} as calculated shares to buy is less than one.")
+
+        # Sell logic
+        elif orderbook_id in owned_stocks and owned_stocks[orderbook_id]['shares'] > 0:
+            if buy_ask < lowest_price:
+                sell_shares = owned_stocks[orderbook_id]['shares']
+                transaction_amount = sell_shares * buy_ask - calculate_brokerage_fee(sell_shares * buy_ask)
+                budget += transaction_amount
                 
-                stock_purchase_impact = (sell_ask_price + calculate_brokerage_fee(sell_ask_price)) * max_affordable_shares
-                if max_affordable_shares > 0:
-                    if stock_purchase_impact < total_account_value * significant_impact_threshold:
-                        shares_to_buy = max_affordable_shares
-                    else:
-                        min_range = max(1, max_affordable_shares // 2)  # Ensures we buy at least 1 share
-                        shares_to_buy = randint(min_range, max_affordable_shares)
-                    
-                    if sell_ask_price > highest_price and shares_to_buy >= 1:
-                        transaction_amount = shares_to_buy * sell_ask_price + calculate_brokerage_fee(shares_to_buy * sell_ask_price)
-                        
-                        # Added check to ensure the budget is sufficient
-                        if transaction_amount <= budget:
-                            if transaction_amount > 250:
-                                budget = budget + transaction_amount - calculate_brokerage_fee(shares_to_buy * sell_ask_price)
-                                
-                                owned_stocks[orderbook_id] = {
-                                    'name': ticker,
-                                    'price': sell_ask_price,
-                                    'shares': shares_to_buy,
-                                    'id': orderbook_id
-                                }
-                                
-                                current_date = datetime.now()
-                                await log_transaction('BUY', ticker, orderbook_id, shares_to_buy, sell_ask_price, current_date.strftime('%Y-%m-%d %H:%M:%S'))
-                                # print(f"At {current_date.strftime('%Y-%m-%d %H:%M:%S')}, {ticker} with id {orderbook_id} is {sell_ask_price}. The highest price within the specified days was {highest_price}")
-                                print(cl(f"At {current_date.strftime('%Y-%m-%d %H:%M:%S')}, we BUY {shares_to_buy} shares of {ticker} at {sell_ask_price} for a total of {transaction_amount} SEK, of which {calculate_brokerage_fee(shares_to_buy * sell_ask_price)} SEK fee", 'green'))
-                                # print(f"New budget: {budget}")
-                            else:
-                                print(f"Transaction amount {transaction_amount} SEK is below the minimum required amount of 250 SEK for purchasing {ticker}.")
-                        else:
-                            print(f"Not enough budget to buy {shares_to_buy} shares of {ticker} at {sell_ask_price} SEK each. Required: {transaction_amount} SEK, Available: {budget} SEK.")
-
-                    else:
-                        print(f'No buy action taken for {ticker} at {datetime_str}. Sell ask price {sell_ask_price} does not exceed the highest price {highest_price} within the threshold.')
-                else:
-                    print(f'No budget available for purchasing {ticker} at {datetime_str}.')
-            # Sell logic
-            elif orderbook_id in owned_stocks and owned_stocks[orderbook_id]['shares'] > 0:
-                if(buy_ask < lowest_price):
-                    sell_shares = owned_stocks[orderbook_id]['shares']
-                    sell_price = buy_ask
-                    
-                    transaction_amount = sell_shares * sell_price
-                    budget = budget + transaction_amount - calculate_brokerage_fee(sell_shares * sell_price)
-                    owned_stocks[orderbook_id]['shares'] = 0
-                    
-                    current_date = datetime.now()
-                    await log_transaction('SELL', ticker, orderbook_id, sell_shares, sell_price, current_date.strftime('%Y-%m-%d %H:%M:%S'))
-                    # print(f"At {datetime_str}, {ticker} with id {orderbook_id} is {buy_ask}. The lowest price within {lower_length} days was {lowest_price}, therefore")
-                    print(cl(f"At {datetime_str}, we SELL {sell_shares} shares of {ticker} at {buy_ask} for a total of {transaction_amount} SEK, of which {calculate_brokerage_fee(sell_shares * buy_ask)} SEK fee", 'red'))
-                else:
-                    print(f'No sell action taken for {ticker} at {datetime_str}. Buy ask price {buy_ask} is not lower than the lowest price {lowest_price} within the threshold.')
+                owned_stocks[orderbook_id]['shares'] = 0
+                current_date = datetime.now()
+                await log_transaction('SELL', orderbook_id, sell_shares, buy_ask, current_date.strftime('%Y-%m-%d %H:%M:%S'))
+                print(f"SOLD {sell_shares} shares of {orderbook_id} at {buy_ask}.")
             else:
-                print(f'No action taken for {ticker} at {datetime_str}. Either not owned or no shares to sell.')
-        else:
-            print(f'No matching ticker found for orderbook ID {orderbook_id}.')
-    except Exception as e:
-        print(f"Error processing realtime data: {e}")
-        
-realtime_data_dir = 'input/'
+                print(f"No sell action taken for {orderbook_id} as the price has not met the selling criteria.")
 
-#processed_lines = set()
-realtime_data_name = datetime.now().strftime("%Y-%m-%d")
+    except Exception as e:
+        print(f"Error processing realtime data for orderbook ID {orderbook_id}: {e}")
+
+
 async def watch_for_data_changes():
-    processed_lines = set()  # Initialize a set to keep track of processed lines
-    while True:
-        try:
-            async for changes in awatch(realtime_data_dir):
-                for change in changes:
-                    _, path = change
-                    if path.endswith(f'realtime_data_{realtime_data_name}_data.csv'):
-                        async with aio_open(path, 'r') as file:
-                            async for line in file:
-                                line = line.strip()
-                                if line not in processed_lines:
-                                    processed_lines.add(line)
-                                    await process_realtime_data(line, whitelisted_tickers, budget)
-        except Exception as e:
-            # Handle exceptions here, you can log them or take appropriate action
-            print(f"An error occurred: {e}")
+    redis_client = aioredis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
+    last_processed = {}  # Dictionary to track the last processed timestamp for each key
+
+    try:
+        while True:
+            keys = await redis_client.keys('*')  # Get all stock keys
+            for key in keys:
+                stock_data = await redis_client.hgetall(key)
+                data_timestamp = datetime.strptime(stock_data.get('updated', '1970-01-01 00:00:00'), '%Y-%m-%d %H:%M:%S')
+                
+                if key not in last_processed or last_processed[key] < data_timestamp:
+                    await process_realtime_data(key, stock_data)
+                    last_processed[key] = data_timestamp
+                    print(last_processed)
+                    
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        await redis_client.close()
 
 
 

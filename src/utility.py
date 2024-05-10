@@ -14,6 +14,7 @@ from aiofile import async_open as aio_open
 from bayes_opt import BayesianOptimization
 from random import randint
 import pandas_ta as ta
+import redis.asyncio as aioredis
 
 # avanza = None  # Initialize avanza at the start of your script
 def initialize_avanza():
@@ -54,7 +55,7 @@ def get_balance():
     return budget
 
     
-def get_owned_stocks(os):
+def get_owned_stocks(owned_stocks_dict):
     global avanza
     
     try:
@@ -67,58 +68,48 @@ def get_owned_stocks(os):
         for entry in data['withOrderbook']:
             account = entry['account']
             if account['id'] == getenv('AVANZA_ACCOUNT_ID'):
-                instrument = entry['instrument']  # Access 'instrument' as a dictionary
+                instrument = entry['instrument']
                 volume = entry['volume']['value']
                 orderbook_id = instrument['orderbook']['id']
                 orderbook_name = instrument['name']
                 
-                # Access price information if available
                 if 'orderbook' in instrument and 'quote' in instrument['orderbook'] and instrument['orderbook']['quote']['buy'] is not None:
                     buy_price = instrument['orderbook']['quote']['buy']['value']
-                    os[orderbook_id] = {'name': orderbook_name, 'price': buy_price, 'shares': volume, 'id': orderbook_id}
+                    owned_stocks_dict[orderbook_id] = {'name': orderbook_name, 'price': buy_price, 'shares': volume, 'id': orderbook_id}
                 else:
                     break
     else:
         print("No 'withOrderbook' key found in the data dictionary.")
     
-    return os  # Return the dictionary containing owned stocks data
+    return owned_stocks_dict
 
 def calculate_brokerage_fee(transaction_amount):
     fee = transaction_amount * 0.0025  # 0.25%
     return max(fee, 1)  # Minimum fee is 1 SEK
 
-async def log_transaction(transaction_type, ticker, orderbook_id, shares, price, transaction_date, profit=None, file_path = 'output/trades.csv'): #output/trades.csv
-    # Parse the transaction date to a datetime object
+async def log_transaction(transaction_type, orderbook_id, shares, price, transaction_date, file_path):
+    redis_client = aioredis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
+    
     transaction_datetime = datetime.strptime(transaction_date, '%Y-%m-%d %H:%M:%S')
 
     # Check if the transaction time is between 09:00 and 17:00
-    if 9 <= transaction_datetime.hour < 17:
-        #file_path = 'output/trades.csv'
-        header = ['Transaction Type', 'Ticker', 'Orderbook ID', 'Shares', 'Price', 'Date', 'Profit']
-
-        async with aio_open(file_path, 'a') as file:
-            # Check if the file is empty and write header if it is
-            if (file.tell()) == 0:
-                await file.write(','.join(header) + '\n')
-
-            transaction_data = [transaction_type, ticker, str(orderbook_id), str(shares), str(price), transaction_date]
-
-            # Include profit in the log for sell transactions
-            if transaction_type == 'SELL' and profit is not None:
-                transaction_data.append(str(profit))
-            else:
-                transaction_data.append('')  # Append empty string for non-sell transactions
-
-            await file.write(','.join(transaction_data) + '\n')
+    if 9 <= transaction_datetime.hour < 20:
+        transaction_data = {
+            'type': transaction_type,
+            # 'ticker': ticker, # needs fixing
+            'orderbook_id': orderbook_id,
+            'shares': shares,
+            'price': price,
+            'date': transaction_date
+        }
+        
+        await redis_client.hset(orderbook_id, mapping=transaction_data)
             
 def implement_strategy(stock, investment, lower_length=None, upper_length=None):
     actions = []
     in_position = False
     equity = investment
     no_of_shares = 0
-
-    # Remove 'date' column processing from here
-    # Instead, use the index as the date
 
     for i in range(3, len(stock)):
         current_entry = stock['date'].iloc[i]
