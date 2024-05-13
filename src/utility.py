@@ -97,13 +97,24 @@ async def log_transaction(transaction_type, orderbook_id, shares, price, transac
         transaction_data = {
             'type': transaction_type,
             # 'ticker': ticker, # needs fixing
-            'orderbook_id': orderbook_id,
             'shares': shares,
             'price': price,
             'date': transaction_date
         }
-        print(transaction_type)
+        
         await redis_client.hset(orderbook_id, mapping=transaction_data)
+        
+        # header = ['Transaction Type', 'Ticker', 'Orderbook ID', 'Shares', 'Price', 'Date', 'Profit']
+
+        # async with aio_open(file_path, 'a') as file:
+        #     # Check if the file is empty and write header if it is
+        #     if (file.tell()) == 0:
+        #         await file.write(','.join(header) + '\n')
+
+        #     transaction_data = [transaction_type, str(orderbook_id), str(shares), str(price), transaction_date]
+
+        #     await file.write(','.join(transaction_data) + '\n')
+
             
 def implement_strategy(stock, investment, lower_length=None, upper_length=None):
     actions = []
