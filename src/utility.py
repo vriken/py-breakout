@@ -93,7 +93,7 @@ async def log_transaction(transaction_type, orderbook_id, shares, price, transac
     transaction_datetime = datetime.strptime(transaction_date, '%Y-%m-%d %H:%M:%S')
 
     # Check if the transaction time is between 09:00 and 17:00
-    if 9 <= transaction_datetime.hour < 20:
+    if 9 <= transaction_datetime.hour < 17:
         transaction_data = {
             'type': transaction_type,
             # 'ticker': ticker, # needs fixing
@@ -102,7 +102,7 @@ async def log_transaction(transaction_type, orderbook_id, shares, price, transac
             'price': price,
             'date': transaction_date
         }
-        
+        print(transaction_type)
         await redis_client.hset(orderbook_id, mapping=transaction_data)
             
 def implement_strategy(stock, investment, lower_length=None, upper_length=None):

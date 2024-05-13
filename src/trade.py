@@ -1,66 +1,67 @@
-from utility import datetime, OrderType, timedelta, getenv
+from utility import datetime, OrderType, timedelta, getenv, initialize_avanza
 import asyncio
 import redis.asyncio as aioredis
 from dotenv import load_dotenv
 
-
 async def trade(avanza):
     load_dotenv()
-    # Connect to Redis using the async Redis client
     r = aioredis.Redis(host='localhost', port=6379, db=0)
-    
-    current_date = datetime.now().strftime('%Y-%m-%d')
-    key_name = f"transactions:{current_date}"  # Assume transaction logs are stored daily
 
-    last_processed_index = 0  # Track the last processed index
+    try:
+        while True:
+            # Fetch all keys that end with 'BUY'
+            buy_keys = await r.keys('*BUY')
+            # Fetch all keys that end with 'SELL'
+            sell_keys = await r.keys('*SELL')
 
-    while True:
-        try:
-            # Fetch all transactions from Redis for the current day
-            transactions = await r.lrange(key_name, 0, -1)
-            for index, transaction_str in enumerate(transactions[last_processed_index:], start=last_processed_index):
-                transaction_data = transaction_str.split(',')
-                transaction_type, ticker, order_book_id, shares, price, transaction_date, _ = transaction_data
+            # Combine the lists of keys
+            keys = list(set(buy_keys + sell_keys))  # Remove duplicates by converting to a set and back to a list
 
-                trade_datetime = datetime.strptime(transaction_date, '%Y-%m-%d %H:%M:%S')
-                current_datetime = datetime.now()  # Get the current datetime
-
-                if trade_datetime < (current_datetime - timedelta(seconds=120)):
+            for key in keys:
+                transaction_data = await r.hgetall(key)
+                if b'orderbook_id' not in transaction_data or b'shares' not in transaction_data or b'price' not in transaction_data:
+                    print(f"Missing data for key: {key.decode()}")
                     continue
 
+                order_book_id = transaction_data[b'orderbook_id'].decode('utf-8')
+                shares = int(transaction_data[b'shares'])
+                price = float(transaction_data[b'price'])
+                transaction_type = transaction_data[b'type'].decode('utf-8') if b'type' in transaction_data else 'BUY' # Default to BUY if missing
+                transaction_date = transaction_data[b'date'].decode('utf-8') if b'date' in transaction_data else datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+                trade_datetime = datetime.strptime(transaction_date, '%Y-%m-%d %H:%M:%S')
+                current_datetime = datetime.now()
+
+                if trade_datetime < (current_datetime - timedelta(seconds=120)):
+                    continue  # Skip old transactions
+
                 order_type = OrderType.BUY if transaction_type == 'BUY' else OrderType.SELL
-                volume = int(shares)
-                price = float(price)
                 valid_until = trade_datetime.date()
 
                 try:
-                    result = await avanza.place_order(
+                    result = avanza.place_order(
                         account_id=getenv('AVANZA_ACCOUNT_ID'),
                         order_book_id=order_book_id,
                         order_type=order_type,
                         price=price,
                         valid_until=valid_until,
-                        volume=volume
+                        volume=shares
                     )
-
                     print(result)
                 except Exception as e:
                     print(f"Error placing order: {e}")
 
-                last_processed_index = index + 1  # Update the last processed index
-
-            # Sleep before the next iteration to avoid too frequent polling
-            await asyncio.sleep(60)  # 60 seconds wait time
-
-        except Exception as e:
-            print(f"Error reading transactions from Redis: {e}")
-
-def main(avanza):
-    """Sets up the asyncio loop for the trade coroutine."""
+    finally:
+        await r.aclose()
+        print("Redis connection closed.")        
+def main():
+    avanza = initialize_avanza()
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    loop.run_until_complete(trade(avanza))
-    loop.close()
+    try:
+        loop.run_until_complete(trade(avanza))
+    finally:
+        loop.close()
 
 if __name__ == '__main__':
-    print("This script should be run from the main script to ensure proper handling of the Avanza object.")
+    main()
