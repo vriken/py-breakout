@@ -1,63 +1,75 @@
-from utility import datetime, OrderType, timedelta, getenv, initialize_avanza
+from utility import datetime, OrderType, timedelta, getenv, read_parquet, initialize_avanza
 import asyncio
-import redis.asyncio as aioredis
 from dotenv import load_dotenv
+import os
+load_dotenv()
 
-async def trade():
-    load_dotenv()
-    r = aioredis.Redis(host='localhost', port=6379, db=0)
-    pubsub = r.pubsub()
-    await pubsub.psubscribe('__keyspace@0__:*')  # Subscribe to all key events in database 0
+base_path = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+file_path = f"{base_path}/output/trades.parquet"
 
-    try:
-        while True:
-            message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=5)
-            print(message)
-            if message:
-                key = message['channel'].split(':')[-1]  # Get the key from the channel name
-                transaction_data = await r.hgetall(key)
-                if b'shares' not in transaction_data or b'price' not in transaction_data:
-                    continue
+# Track the last row processed
+last_row_processed = 0
 
-                order_book_id = key.decode('utf-8')
-                shares = int(transaction_data[b'shares'])
-                price = float(transaction_data[b'price'])
-                transaction_type = transaction_data[b'type'].decode('utf-8') if b'type' in transaction_data else 'BUY'
-                transaction_date = transaction_data[b'date'].decode('utf-8') if b'date' in transaction_data else datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+# def send_email(subject, body):
+#     msg = MIMEText(body)
+#     msg['Subject'] = subject
+#     msg['From'] = getenv('EMAIL_SENDER')
+#     msg['To'] = getenv('EMAIL_RECEIVER')
+#     with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
+#         smtp.login(getenv('EMAIL_SENDER'), getenv('EMAIL_PASSWORD'))
+#         smtp.sendmail(getenv('EMAIL_SENDER'), getenv('EMAIL_RECEIVER'), msg.as_string())
 
-                trade_datetime = datetime.strptime(transaction_date, '%Y-%m-%d %H:%M:%S')
-                current_datetime = datetime.now()
-                if trade_datetime < (current_datetime - timedelta(seconds=20)):
-                    continue
+async def trade(avanza):
+    global last_row_processed
+    while True:
+        try:
+            trades = read_parquet(file_path)
+        except Exception as e:
+            print(f"Error reading Parquet file: {e}")
+            await asyncio.sleep(30)  # Wait before retrying to avoid rapid retries on failure
+            continue
 
-                order_type = OrderType.BUY if transaction_type == 'BUY' else OrderType.SELL
-                valid_until = trade_datetime.date()
-                print(order_type)
+        current_datetime = datetime.now()  # Get the current datetime
 
-                try:
-                    print(
-                        account_id=getenv('AVANZA_ACCOUNT_ID'), 
-                        order_book_id=order_book_id, 
-                        order_type=order_type, 
-                        price=price, 
-                        valid_until=valid_until, 
-                        volume=shares)
-                except Exception as e:
-                    print(f"Error placing order: {e}")
+        for index, row in trades.iloc[last_row_processed:].iterrows():
+            trade_datetime = row['transaction_date']
+            if isinstance(trade_datetime, str):
+                trade_datetime = datetime.strptime(trade_datetime, '%Y-%m-%d %H:%M:%S')
+            if trade_datetime < (current_datetime - timedelta(seconds=60)):
+                # print(f"Skipping past trade for {row['Ticker']} on {row['Date']}")
+                last_row_processed = index + 1
+                continue
 
-    finally:
-        await pubsub.close()
-        await r.aclose()
-        print("Redis connections closed.")
+            order_type = OrderType.BUY if row['transaction_type'] == 'BUY' else OrderType.SELL
+            order_book_id = row['orderbook_id']
+            volume = row['shares']
+            price = row['price']
+            valid_until = trade_datetime.date()
 
-def main():
+            try:
+                result = avanza.place_order(
+                    account_id=getenv('AVANZA_ACCOUNT_ID'),
+                    order_book_id=order_book_id,
+                    order_type=order_type,
+                    price=price,
+                    valid_until=valid_until,
+                    volume=volume
+                )
+                # email_body = f"Trade Executed: {result}"
+                # send_email("Trade Notification", email_body)
+                print(result)
+                last_row_processed = index + 1
+            except Exception as e:
+                print(f"Error processing row {index}: {e}")
+
+def main(avanza):
+    """Sets up the asyncio loop for the trade coroutine."""
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    try:
-        loop.run_until_complete(trade())
-    finally:
-        loop.close()
+    loop.run_until_complete(trade(avanza))
+    loop.close()
 
 if __name__ == '__main__':
-    # avanza = initialize_avanza()
-    main()
+    avanza = initialize_avanza()
+    main(avanza)
+    # print("This script should be run from the main script to ensure proper handling of the Avanza object.")

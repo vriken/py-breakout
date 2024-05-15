@@ -33,9 +33,8 @@ def run_script(name, avanza):
     finally:
         loop.close()
 
-def start_script_in_thread(name):
+def start_script_in_thread(name, avanza):
     """Start a script in a separate thread, ensuring it has the necessary Avanza object."""
-    avanza = initialize_avanza() if scripts[name]['needs_avanza'] else None
     thread = threading.Thread(target=run_script, args=(name, avanza))
     scripts[name]['thread'] = thread
     thread.start()
@@ -43,7 +42,8 @@ def start_script_in_thread(name):
 
 def main():
     """Start all scripts defined in the configuration."""
-    threads = [start_script_in_thread(name) for name in scripts]
+    avanza = initialize_avanza()
+    threads = [start_script_in_thread(name, avanza) for name in scripts if scripts[name]['needs_avanza']]
     for thread in threads:
         thread.join()
 

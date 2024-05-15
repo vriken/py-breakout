@@ -1,10 +1,10 @@
 from dotenv import load_dotenv
 import avanza
 from avanza import Avanza, ChannelType, OrderType
-from os import getenv, path
+from os import getenv, path, makedirs
 from time import sleep
 import csv
-from pandas import read_csv, DataFrame, to_datetime, Timestamp
+from pandas import read_csv, DataFrame, to_datetime, Timestamp, read_parquet, concat
 from yahoo_fin.stock_info import get_data
 from datetime import datetime, timedelta
 from math import floor
@@ -87,33 +87,32 @@ def calculate_brokerage_fee(transaction_amount):
     fee = transaction_amount * 0.0025  # 0.25%
     return max(fee, 1)  # Minimum fee is 1 SEK
 
-async def log_transaction(transaction_type, orderbook_id, shares, price, transaction_date, file_path):
-    redis_client = aioredis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
-    
+async def log_transaction(transaction_type, orderbook_id, shares, price, transaction_date, output_file_path):
     transaction_datetime = datetime.strptime(transaction_date, '%Y-%m-%d %H:%M:%S')
 
-    # Check if the transaction time is between 09:00 and 17:00
     if 9 <= transaction_datetime.hour < 17:
-        transaction_data = {
-            'type': transaction_type,
-            # 'ticker': ticker, # needs fixing
-            'shares': shares,
-            'price': price,
-            'date': transaction_date
-        }
-        
-        await redis_client.hset(orderbook_id, mapping=transaction_data)
-        
-        # header = ['Transaction Type', 'Ticker', 'Orderbook ID', 'Shares', 'Price', 'Date', 'Profit']
+        header = ['Transaction Type', 'Orderbook ID', 'Shares', 'Price', 'Date']
+        transaction_data = [transaction_type, int(orderbook_id), int(shares), float(price), transaction_date]
 
-        # async with aio_open(file_path, 'a') as file:
-        #     # Check if the file is empty and write header if it is
-        #     if (file.tell()) == 0:
-        #         await file.write(','.join(header) + '\n')
+        new_transaction_df = DataFrame([transaction_data], columns=header)
 
-        #     transaction_data = [transaction_type, str(orderbook_id), str(shares), str(price), transaction_date]
+        # Ensure the Parquet file is initialized
+        if not path.exists(output_file_path):
+            header = ['Transaction Type', 'Orderbook ID', 'Shares', 'Price', 'Date']
+            df = DataFrame(columns=header)
+            makedirs(path.dirname(output_file_path), exist_ok=True)
+            df.to_parquet(output_file_path, index=False)
 
-        #     await file.write(','.join(transaction_data) + '\n')
+        if path.exists(output_file_path):
+            existing_transactions_df = read_parquet(output_file_path)
+            updated_transactions_df = concat([existing_transactions_df, new_transaction_df], ignore_index=True)
+        else:
+            # This case should not be hit due to init_parquet_file, but handle it defensively
+            updated_transactions_df = new_transaction_df
+
+        updated_transactions_df.to_parquet(output_file_path, index=False)
+        print(f"Logged transaction: {transaction_data}")
+
 
             
 def implement_strategy(stock, investment, lower_length=None, upper_length=None):

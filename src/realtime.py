@@ -1,32 +1,35 @@
-from utility import get_balance, get_owned_stocks, read_csv, get_data, datetime, timedelta, floor, calculate_brokerage_fee, log_transaction, cl, awatch, aio_open, randint
+from utility import get_balance, get_owned_stocks, read_csv, get_data, datetime, timedelta, floor, calculate_brokerage_fee, randint, read_parquet, DataFrame
+from test import log_transaction
 import asyncio
-import asyncio
-import redis.asyncio as aioredis  # Use the async version of the Redis client
+import pyarrow
+import duckdb
 import os
 from dotenv import load_dotenv
 load_dotenv()
+
 base_path = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+parquet_file_path = os.path.join(base_path, 'input', f'realtime_data_{datetime.now().strftime("%Y-%m-%d")}_data.parquet')
 
 budget = get_balance()
 significant_impact_threshold = 0.25
-total_account_value = 4000 #update this to update automatically
+total_account_value = 4000  # Update this to update automatically
 print(f'Initial budget is: {budget}\n')
 
-# checking which stocks we already own
+# Checking which stocks we already own
 owned_stocks = {}
 owned_stocks = get_owned_stocks(owned_stocks)
 for stock_id, stock_info in owned_stocks.items():
     print(f"{stock_info['name']} - Price: {stock_info['price']}, Shares: {stock_info['shares']} - ID: {stock_info['id']}")
-    
+
 print('\n- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -')
 
-# reading our parameters
+# Reading our parameters
 stocks = read_csv(f'{base_path}/input/best_tickers.csv')
 whitelisted_tickers = dict(zip(stocks['ticker'], stocks['id']))
-        
+
 print('- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -')
 
-# getting donchian parameters
+# Getting Donchian parameters
 donchian_parameters = {}
 for index, row in stocks.iterrows():
     ticker = row['ticker']
@@ -36,15 +39,15 @@ for index, row in stocks.iterrows():
     }
     donchian_parameters[ticker] = params
 
-# preparing for fetching yahoo data
+# Preparing for fetching Yahoo data
 current_date = datetime.now()
-start_date_str = (current_date - timedelta(days = 80)).strftime('%Y-%m-%d')
-end_date_str = (current_date - timedelta(days = 1)).strftime('%Y-%m-%d')
+start_date_str = (current_date - timedelta(days=80)).strftime('%Y-%m-%d')
+end_date_str = (current_date - timedelta(days=1)).strftime('%Y-%m-%d')
 
 historical_data_dict = {}
 # This takes like a minute, figure out a way to store this more effectively
 print(budget)
-print('fetching historical data')
+print('Fetching historical data')
 for ticker, ticker_id in whitelisted_tickers.items():
     if ticker:
         try:
@@ -70,9 +73,6 @@ for ticker, ticker_id in whitelisted_tickers.items():
 
 print('Done fetching historical data')
 
-        
-#print(historical_data_dict)
-        
 # Calculating highest and lowest prices based on the Donchian channel parameters
 highest_prices = {}
 lowest_prices = {}
@@ -89,27 +89,26 @@ for ticker, data_list in historical_data_dict.items():
         recent_low_data = data_list[-lower_length:]
         lowest_prices[ticker] = min([data['low'] for data in recent_low_data])
 
-async def process_realtime_data(orderbook_id, redis_data):
+async def process_realtime_data(orderbook_id, stock_data):
     try:
-        buy_ask = float(redis_data['buyPrice'])
-        sell_ask = float(redis_data['sellPrice'])
-        datetime_str = redis_data['updated']
+        buy_ask = float(stock_data['buy_price'])
+        sell_ask = float(stock_data['sell_price'])
+        datetime_obj = stock_data['updated']
 
-        datetime_obj = datetime.strptime(datetime_str, "%Y-%m-%d %H:%M:%S")
-        if datetime_obj <= (datetime.now() - timedelta(seconds=5)):
-            # print(f"Data for {orderbook_id} is too old.")
-            return
-        
-        highest_price = round(highest_prices.get(ticker), 3)
-        lowest_price = round(lowest_prices.get(ticker), 3)
+        if datetime_obj is not None:
+            if datetime_obj <= (datetime.now() - timedelta(seconds=5)):
+                return
 
-        owned_stocks = {}
-        # owned_stocks = get_owned_stocks(owned_stocks)
+        ticker = stock_data.get('ticker')  # Get the ticker from the data
+        highest_price = round(highest_prices.get(ticker, 0), 3)
+        lowest_price = round(lowest_prices.get(ticker, 0), 3)
+
+        owned_stocks = get_owned_stocks({})
         budget = get_balance()
 
         # Buy logic
         if orderbook_id not in owned_stocks.keys() or str(orderbook_id) not in owned_stocks.keys():
-            max_budget_for_stock = get_balance()
+            max_budget_for_stock = budget
             max_affordable_shares = floor(max_budget_for_stock / sell_ask)
             stock_purchase_impact = (sell_ask + calculate_brokerage_fee(sell_ask)) * max_affordable_shares
             if max_affordable_shares > 0:
@@ -120,7 +119,7 @@ async def process_realtime_data(orderbook_id, redis_data):
                         budget -= transaction_amount  # Update the budget
                         owned_stocks[orderbook_id] = {'price': sell_ask, 'shares': shares_to_buy}
                         current_date = datetime.now()
-                        await log_transaction('BUY', orderbook_id, shares_to_buy, sell_ask, current_date.strftime('%Y-%m-%d %H:%M:%S'), f'{base_path}/output/trades.csv')
+                        await log_transaction('BUY', orderbook_id, shares_to_buy, sell_ask, current_date.strftime('%Y-%m-%d %H:%M:%S'))
                         print(f"BUY {shares_to_buy} shares of {orderbook_id} at {sell_ask}.")
                     else:
                         print(f"Insufficient budget or transaction amount too low for {orderbook_id}.")
@@ -144,27 +143,42 @@ async def process_realtime_data(orderbook_id, redis_data):
     except Exception as e:
         print(f"Error processing realtime data for orderbook ID {orderbook_id}: {e}")
 
-
 async def watch_for_data_changes():
-    redis_client = aioredis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
+    duckdb_conn = duckdb.connect(database=':memory:')
     last_processed = {}  # Dictionary to track the last processed timestamp for each key
 
     try:
         while True:
-            keys = await redis_client.keys('*')  # Get all stock keys
-            for key in keys:
-                stock_data = await redis_client.hgetall(key)
-                data_timestamp = datetime.strptime(stock_data.get('updated', '1970-01-01 00:00:00'), '%Y-%m-%d %H:%M:%S')
+            # Read the Parquet file into a DataFrame
+            if os.path.exists(parquet_file_path):
+                stock_data_df = read_parquet(parquet_file_path)
                 
-                if key not in last_processed or last_processed[key] < data_timestamp:
-                    await process_realtime_data(key, stock_data)
-                    last_processed[key] = data_timestamp
-                    print(last_processed)
+                # Iterate over each row in the DataFrame
+                for _, row in stock_data_df.iterrows():
+                    key = str(row.get('orderbook_id'))  # Use .get() to avoid KeyError
+                    timestamp_obj = row.get('updated_datetime')
+
+                    if timestamp_obj is not None:
+                        data_timestamp = timestamp_obj
+                    else:
+                        data_timestamp = None
                     
+                    if key not in last_processed or (data_timestamp and last_processed[key] < data_timestamp):
+                        stock_data = {
+                            'orderbook_id': row.get('orderbook_id'),
+                            'buy_price': row.get('buy_price'),
+                            'sell_price': row.get('sell_price'),
+                            'updated': data_timestamp,
+                            'ticker': row.get('ticker')
+                        }
+                        await process_realtime_data(key, stock_data)
+                        if data_timestamp:
+                            last_processed[key] = data_timestamp
+
+            await asyncio.sleep(1)  # Adjust the sleep duration as necessary
+
     except Exception as e:
         print(f"An error occurred: {e}")
-        await redis_client.close()
-
 
 
 async def main():
