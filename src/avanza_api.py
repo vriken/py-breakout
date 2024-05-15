@@ -67,10 +67,16 @@ async def resilient_subscribe(avanza, whitelisted_tickers):
 
 async def subscribe_to_channel(avanza, whitelisted_tickers):
     for _, id in whitelisted_tickers.items():
-        try:
-            await avanza.subscribe_to_id(ChannelType.QUOTES, str(id), callback)
-        except Exception as e:
-            print(f"Error subscribing to channel: {e}")
+        while True:
+            try:
+                await avanza.subscribe_to_id(ChannelType.QUOTES, str(id), callback)
+                break  # Break the loop if subscription is successful
+            except websockets.exceptions.ConnectionClosedError as e:
+                print(f"WebSocket connection closed unexpectedly: {e}. Reconnecting...")
+                await asyncio.sleep(5)  # wait before reconnecting
+            except Exception as e:
+                print(f"Error subscribing to channel: {e}")
+                break  # Exit loop on other exceptions, if appropriate
 
 def main(avanza):
     while True:

@@ -1,5 +1,4 @@
-from utility import get_balance, get_owned_stocks, read_csv, get_data, datetime, timedelta, floor, calculate_brokerage_fee, randint, read_parquet, DataFrame
-from test import log_transaction
+from utility import OrderType, getenv, initialize_avanza, get_balance, get_owned_stocks, read_csv, get_data, datetime, timedelta, floor, calculate_brokerage_fee, randint, read_parquet, DataFrame
 import asyncio
 import pyarrow
 import duckdb
@@ -89,7 +88,7 @@ for ticker, data_list in historical_data_dict.items():
         recent_low_data = data_list[-lower_length:]
         lowest_prices[ticker] = min([data['low'] for data in recent_low_data])
 
-async def process_realtime_data(orderbook_id, stock_data):
+async def process_realtime_data(orderbook_id, stock_data, avanza):
     try:
         buy_ask = float(stock_data['buy_price'])
         sell_ask = float(stock_data['sell_price'])
@@ -119,7 +118,8 @@ async def process_realtime_data(orderbook_id, stock_data):
                         budget -= transaction_amount  # Update the budget
                         owned_stocks[orderbook_id] = {'price': sell_ask, 'shares': shares_to_buy}
                         current_date = datetime.now()
-                        await log_transaction('BUY', orderbook_id, shares_to_buy, sell_ask, current_date.strftime('%Y-%m-%d %H:%M:%S'))
+                        await avanza.place_order(account_id=getenv('AVANZA_ACCOUNT_ID'), order_book_id=orderbook_id,order_type=OrderType.BUY, price=sell_ask, valid_until=current_date.strftime('%Y-%m-%d %H:%M:%S'), volume=shares_to_buy)
+                        # await log_transaction('BUY', orderbook_id, shares_to_buy, sell_ask, current_date.strftime('%Y-%m-%d %H:%M:%S'))
                         print(f"BUY {shares_to_buy} shares of {orderbook_id} at {sell_ask}.")
                     else:
                         print(f"Insufficient budget or transaction amount too low for {orderbook_id}.")
@@ -135,7 +135,8 @@ async def process_realtime_data(orderbook_id, stock_data):
                 
                 owned_stocks[orderbook_id]['shares'] = 0
                 current_date = datetime.now()
-                await log_transaction('SELL', orderbook_id, sell_shares, buy_ask, current_date.strftime('%Y-%m-%d %H:%M:%S'))
+                await avanza.place_order(account_id=getenv('AVANZA_ACCOUNT_ID'), order_book_id=orderbook_id,order_type=OrderType.SELL, price=buy_ask, valid_until=current_date.strftime('%Y-%m-%d %H:%M:%S'), volume=sell_shares)
+                # await log_transaction('SELL', orderbook_id, sell_shares, buy_ask, current_date.strftime('%Y-%m-%d %H:%M:%S'))
                 print(f"SOLD {sell_shares} shares of {orderbook_id} at {buy_ask}.")
             else:
                 print(f"No sell action taken for {orderbook_id} as the price has not met the selling criteria.")
@@ -144,7 +145,8 @@ async def process_realtime_data(orderbook_id, stock_data):
         print(f"Error processing realtime data for orderbook ID {orderbook_id}: {e}")
 
 async def watch_for_data_changes():
-    duckdb_conn = duckdb.connect(database=':memory:')
+    # duckdb_conn = duckdb.connect(database=':memory:')
+    avanza = initialize_avanza()
     last_processed = {}  # Dictionary to track the last processed timestamp for each key
 
     try:
@@ -171,7 +173,7 @@ async def watch_for_data_changes():
                             'updated': data_timestamp,
                             'ticker': row.get('ticker')
                         }
-                        await process_realtime_data(key, stock_data)
+                        await process_realtime_data(key, stock_data, avanza)
                         if data_timestamp:
                             last_processed[key] = data_timestamp
 
