@@ -5,3 +5,6 @@ all_tickers_optimized.csv
 best_tickers_without_id.csv
 realtime_data_*
 .DS_Store
+venv
+.DS_Store
+.gitignore

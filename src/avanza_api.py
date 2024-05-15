@@ -46,7 +46,7 @@ def callback(data):
     try:
         orderbook_id = data['data']['orderbookId']
         buy_price = str(data['data']['buyPrice'])
-        sell_price = str(data['data']['sellPrice'])
+        # sell_price = str(data['data']['sellPrice'])
         updated_timestamp = data['data']['updated']
         updated_datetime = datetime.fromtimestamp(updated_timestamp / 1000.0).strftime('%Y-%m-%d %H:%M:%S')
 
