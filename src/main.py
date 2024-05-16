@@ -65,22 +65,12 @@ def main():
 
         # Define callback function for WebSocket
         def callback(data):
-            print('this is running')
             try:
                 orderbook_id = data['data']['orderbookId']
                 buy_price = str(data['data']['buyPrice'])
                 sell_price = str(data['data']['sellPrice'])
                 updated_timestamp = data['data']['updated']
                 updated_datetime = datetime.fromtimestamp(updated_timestamp / 1000.0).strftime('%Y-%m-%d %H:%M:%S')
-
-                new_data = pd.DataFrame([{
-                    'orderbook_id': orderbook_id,
-                    'buy_price': buy_price,
-                    'sell_price': sell_price,
-                    'updated_datetime': updated_datetime
-                }])
-
-                data_manager.append_data(new_data)
 
                 # Execute buy/sell logic
                 asyncio.create_task(trading_logic.process_realtime_data(orderbook_id, {
