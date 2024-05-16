@@ -1,51 +1,131 @@
+# main.py
+from os import path
 import asyncio
-import threading
-import logging
-from utility import initialize_avanza
-import avanza_api
-import trade
-import realtime
-
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
-scripts = {
-    'avanza_api': {'module': avanza_api, 'needs_avanza': True},
-    'trade': {'module': trade, 'needs_avanza': True},
-    'realtime': {'module': realtime, 'needs_avanza': True}
-}
-
-def run_script(name, avanza):
-    script_info = scripts[name]
-    module = script_info['module']
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        coroutine = module.main(avanza)
-        loop.run_until_complete(coroutine)
-    except Exception as e:
-        if '401' in str(e) or '402' in str(e):  # Session expired
-            logging.error(f"Session expired: {e}. Re-authenticating...")
-            avanza = initialize_avanza()  # Reinitialize if needed
-            return run_script(name, avanza)  # Recursive call with new session
-        else:
-            logging.error(f"{name} encountered a critical error: {e}")
-            return
-    finally:
-        loop.close()
-
-def start_script_in_thread(name, avanza):
-    """Start a script in a separate thread, ensuring it has the necessary Avanza object."""
-    thread = threading.Thread(target=run_script, args=(name, avanza))
-    scripts[name]['thread'] = thread
-    thread.start()
-    return thread
+from datetime import datetime, timedelta
+from avanza_initializer import AvanzaInitializer
+from account_manager import AccountManager
+from data_manager import DataManager
+from trading_logic import TradingLogic
+from websocket_subscription import WebSocketSubscription
+from requests.exceptions import HTTPError
+from websockets.exceptions import ConnectionClosedError
+from dotenv import load_dotenv
+from time import sleep
+import pandas as pd
+from yahoo_fin.stock_info import get_data
 
 def main():
-    """Start all scripts defined in the configuration."""
-    avanza = initialize_avanza()
-    threads = [start_script_in_thread(name, avanza) for name in scripts if scripts[name]['needs_avanza']]
-    for thread in threads:
-        thread.join()
+    load_dotenv()
+    base_path = path.dirname(path.dirname(path.realpath(__file__)))
 
-if __name__ == "__main__":
+    try:
+        # Initialize Avanza
+        avanza = AvanzaInitializer.initialize_avanza()
+
+        # Initialize managers
+        account_manager = AccountManager(avanza)
+        data_manager = DataManager(base_path)
+        trading_logic = TradingLogic(avanza, account_manager, data_manager)
+
+        # Read stocks and prepare whitelisted tickers
+        stocks = data_manager.read_csv(f'{base_path}/input/best_tickers.csv')
+        whitelisted_tickers = dict(zip(stocks['ticker'], stocks['id']))
+
+        # Prepare for fetching Yahoo data
+        current_date = datetime.now()
+        start_date_str = (current_date - timedelta(days=80)).strftime('%Y-%m-%d')
+        end_date_str = (current_date - timedelta(days=1)).strftime('%Y-%m-%d')
+
+        historical_data_dict = {}
+        donchian_parameters = {}
+
+        for index, row in stocks.iterrows():
+            ticker = row['ticker']
+            params = {
+                'lower_length': row['lower_length'],
+                'upper_length': row['upper_length']
+            }
+            donchian_parameters[ticker] = params
+
+            try:
+                historical_data = get_data(ticker, start_date_str, end_date_str, "1d")
+                data_list = [{
+                    'high': row['high'],
+                    'low': row['low'],
+                    'ticker': ticker,
+                    'index': index.strftime("%Y-%m-%d")
+                } for index, row in historical_data.iterrows()]
+
+                historical_data_dict[ticker] = data_list
+
+            except Exception as e:
+                print(f"Error fetching data for ticker {ticker}: {e}")
+
+        trading_logic.calculate_donchian_channels(historical_data_dict, donchian_parameters)
+
+        # Define callback function for WebSocket
+        def callback(data):
+            try:
+                orderbook_id = data['data']['orderbookId']
+                buy_price = str(data['data']['buyPrice'])
+                sell_price = str(data['data']['sellPrice'])
+                updated_timestamp = data['data']['updated']
+                updated_datetime = datetime.fromtimestamp(updated_timestamp / 1000.0).strftime('%Y-%m-%d %H:%M:%S')
+
+                new_data = pd.DataFrame([{
+                    'orderbook_id': orderbook_id,
+                    'buy_price': buy_price,
+                    'sell_price': sell_price,
+                    'updated_datetime': updated_datetime
+                }])
+
+                data_manager.append_data(new_data)
+
+                # Execute buy/sell logic
+                asyncio.create_task(trading_logic.process_realtime_data(orderbook_id, {
+                    'buy_price': buy_price,
+                    'sell_price': sell_price,
+                    'updated_datetime': datetime.fromtimestamp(updated_timestamp / 1000.0),
+                    'ticker': data.get('ticker')
+                }))
+
+            except Exception as e:
+                print(f"Error during data callback: {e}")
+
+        # Initialize WebSocket subscription
+        websocket_subscription = WebSocketSubscription(avanza, whitelisted_tickers, callback)
+
+        while True:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(websocket_subscription.resilient_subscribe())
+                loop.run_forever()
+            except HTTPError as e:
+                if e.response.status_code == 401:
+                    print(f"Failed to authenticate: {e}. Retrying in 30 seconds...")
+                    sleep(30)
+                else:
+                    print(f"HTTP error in main: {e}. Retrying in 30 seconds...")
+                    sleep(30)
+            except ConnectionClosedError as e:
+                print(f"WebSocket connection closed unexpectedly: {e}. Restarting...")
+            except Exception as e:
+                print(f"Error in main: {e}. Retrying in 30 seconds...")
+                sleep(30)
+            finally:
+                loop.close()
+
+    except HTTPError as e:
+        if e.response.status_code == 401:
+            print(f"Failed to authenticate: {e}. Retrying in 30 seconds...")
+            sleep(30)
+        else:
+            print(f"HTTP error during initialization: {e}. Retrying in 30 seconds...")
+            sleep(30)
+    except Exception as e:
+        print(f"Error during initialization: {e}. Retrying in 30 seconds...")
+        sleep(30)
+
+if __name__ == '__main__':
     main()
