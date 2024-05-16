@@ -23,7 +23,7 @@ class TradingLogic:
         return max(fee, 1)  # Minimum fee is 1 SEK
 
     def calculate_donchian_channels(self, historical_data_dict, donchian_parameters):
-        print(donchian_parameters)
+        # print(donchian_parameters)
         for orderbook_id, data_list in historical_data_dict.items():
             upper_length = int(donchian_parameters[orderbook_id]['upper_length'])
             lower_length = int(donchian_parameters[orderbook_id]['lower_length'])
@@ -31,11 +31,11 @@ class TradingLogic:
             if len(data_list) >= max(upper_length, lower_length):
                 recent_high_data = data_list[-upper_length:]
                 self.highest_prices[orderbook_id] = max([data['high'] for data in recent_high_data])
-                print(f"Highest price for {orderbook_id}: {self.highest_prices[orderbook_id]}")
+                # print(f"Highest price for {orderbook_id}: {self.highest_prices[orderbook_id]}")
 
                 recent_low_data = data_list[-lower_length:]
                 self.lowest_prices[orderbook_id] = min([data['low'] for data in recent_low_data])
-                print(f"Lowest price for {orderbook_id}: {self.lowest_prices[orderbook_id]}")
+                # print(f"Lowest price for {orderbook_id}: {self.lowest_prices[orderbook_id]}")
 
     async def process_realtime_data(self, orderbook_id, stock_data):
         try:
@@ -50,9 +50,9 @@ class TradingLogic:
                 return
 
             highest_price = round(self.highest_prices.get(orderbook_id, 0), 3)
-            print(f"Highest price used for {orderbook_id}: {highest_price}")
+            # print(f"Highest price used for {orderbook_id}: {highest_price}")
             lowest_price = round(self.lowest_prices.get(orderbook_id, 0), 3)
-            print(f"Lowest price used for {orderbook_id}: {lowest_price}")
+            # print(f"Lowest price used for {orderbook_id}: {lowest_price}")
 
             owned_stocks = self.account_manager.get_owned_stocks({})
             budget = self.account_manager.get_balance()
