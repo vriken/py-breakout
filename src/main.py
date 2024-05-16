@@ -38,46 +38,47 @@ def main():
 
         historical_data_dict = {}
         donchian_parameters = {}
-
+        
+        print('fetching historical data from yahoo')
         for index, row in stocks.iterrows():
-            ticker = row['ticker']
+            orderbook_id = int(row['id'])  # Ensure orderbook_id is an integer
             params = {
                 'lower_length': row['lower_length'],
                 'upper_length': row['upper_length']
             }
-            donchian_parameters[ticker] = params
+            donchian_parameters[orderbook_id] = params
 
             try:
-                historical_data = get_data(ticker, start_date_str, end_date_str, "1d")
+                historical_data = get_data(row['ticker'], start_date_str, end_date_str, "1d")
                 data_list = [{
                     'high': row['high'],
                     'low': row['low'],
-                    'ticker': ticker,
+                    'orderbook_id': orderbook_id,
                     'index': index.strftime("%Y-%m-%d")
                 } for index, row in historical_data.iterrows()]
 
-                historical_data_dict[ticker] = data_list
+                historical_data_dict[orderbook_id] = data_list
 
             except Exception as e:
-                print(f"Error fetching data for ticker {ticker}: {e}")
+                print(f"Error fetching data for orderbook ID {orderbook_id}: {e}")
+        print('DONE fetching historical data from yahoo')
 
         trading_logic.calculate_donchian_channels(historical_data_dict, donchian_parameters)
 
         # Define callback function for WebSocket
         def callback(data):
             try:
-                orderbook_id = data['data']['orderbookId']
+                orderbook_id = int(data['data']['orderbookId'])  # Ensure orderbook_id is an integer
                 buy_price = str(data['data']['buyPrice'])
                 sell_price = str(data['data']['sellPrice'])
                 updated_timestamp = data['data']['updated']
-                updated_datetime = datetime.fromtimestamp(updated_timestamp / 1000.0).strftime('%Y-%m-%d %H:%M:%S')
+                updated_datetime = datetime.fromtimestamp(updated_timestamp / 1000.0)
 
                 # Execute buy/sell logic
                 asyncio.create_task(trading_logic.process_realtime_data(orderbook_id, {
                     'buy_price': buy_price,
                     'sell_price': sell_price,
-                    'updated_datetime': datetime.fromtimestamp(updated_timestamp / 1000.0),
-                    'ticker': data.get('ticker')
+                    'updated_datetime': updated_datetime  # Pass as datetime object
                 }))
 
             except Exception as e:
