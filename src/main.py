@@ -65,6 +65,7 @@ def main():
 
         # Define callback function for WebSocket
         def callback(data):
+            print('this is running')
             try:
                 orderbook_id = data['data']['orderbookId']
                 buy_price = str(data['data']['buyPrice'])
