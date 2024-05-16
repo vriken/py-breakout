@@ -4,12 +4,6 @@ from random import randint
 from datetime import datetime, timedelta
 from avanza import OrderType
 
-import os
-from math import floor
-from random import randint
-from datetime import datetime, timedelta
-from avanza import OrderType
-
 class TradingLogic:
     def __init__(self, avanza, account_manager, data_manager):
         self.avanza = avanza
