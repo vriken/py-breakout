@@ -8,3 +8,6 @@
  ```
  3. run ```docker-compose up --build```
  4. If you already built, just run docker-compose up
+
+
+OR, create the .env and run the main.py in /src/
