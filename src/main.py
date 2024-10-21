@@ -11,21 +11,30 @@ from websockets.exceptions import ConnectionClosedError
 from account_manager import AccountManager
 from trading_logic import TradingLogic
 from simulator import SimulatedAccountManager
+import argparse
 
 base_path = path.dirname(path.dirname(path.realpath(__file__)))
 stocks = pd.read_csv(f'{base_path}/input/best_tickers.csv')
 whitelisted_tickers = dict(zip(stocks['ticker'], stocks['id']))
 
+parser = argparse.ArgumentParser()
+parser.add_argument('--sim', action='store_true', help='Run in simulation mode')
+args = parser.parse_args()
+
 def integrate_account_manager(avanza):
-    account_manager = AccountManager(avanza)
-    owned_stocks_dict = {}  # Initialize an empty dictionary for owned stocks
+    if args.sim:
+        print("Running in simulation mode")
+        account_manager = SimulatedAccountManager()
+    else:
+        print("Running in live mode")
+        account_manager = AccountManager(avanza)
     
     # Get the account balance
     balance = account_manager.get_balance()
     print(f"Current balance: {balance}")
 
     # Get owned stocks
-    owned_stocks = account_manager.get_owned_stocks(owned_stocks_dict)
+    owned_stocks = account_manager.get_owned_stocks()
     print("Owned Stocks:")
     for stock_id, stock_info in owned_stocks.items():
         print(f"ID: {stock_id}, Info: {stock_info}")
@@ -35,19 +44,6 @@ def integrate_account_manager(avanza):
 current_date = datetime.now()
 start_date = (current_date - timedelta(days=3)).strftime('%Y-%m-%d')
 end_date = (current_date - timedelta(days=1)).strftime('%Y-%m-%d')
-
-print('Fetching historical data for whitelisted stocks from Yahoo')
-historical_data_dict = {}
-for _, row in stocks.iterrows():
-    try:
-        historical_data = get_data(row['ticker'], start_date, end_date, "1d")
-        historical_data_dict[int(row['id'])] = [{
-            'high': r['high'],
-            'low': r['low'],
-            'index': i.strftime("%Y-%m-%d")
-        } for i, r in historical_data.iterrows()]
-    except Exception as e:
-        print(f"Error fetching data for orderbook ID {row['id']}: {e}")
 
 @backoff.on_exception(backoff.expo, Exception, max_tries=5)
 def initialize_avanza():
@@ -98,6 +94,19 @@ async def run_websocket_subscription():
     
     # Integrate account manager
     account_manager, owned_stocks = integrate_account_manager(avanza)
+
+    print('Fetching historical data for whitelisted stocks from Yahoo')
+    historical_data_dict = {}
+    for _, row in stocks.iterrows():
+        try:
+            historical_data = get_data(row['ticker'], start_date, end_date, "1d")
+            historical_data_dict[int(row['id'])] = [{
+                'high': r['high'],
+                'low': r['low'],
+                'index': i.strftime("%Y-%m-%d")
+            } for i, r in historical_data.iterrows()]
+        except Exception as e:
+            print(f"Error fetching data for orderbook ID {row['id']}: {e}")
     
     # Initialize TradingLogic
     trading_logic = TradingLogic(avanza, account_manager)

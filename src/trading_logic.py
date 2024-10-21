@@ -1,9 +1,9 @@
-import asyncio
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta
 from math import floor
 from random import randint
 from avanza import OrderType
 import os
+from simulator import SimulatedAccountManager
 
 class TradingLogic:
     def __init__(self, avanza, account_manager):
@@ -35,9 +35,6 @@ class TradingLogic:
             sell_ask = float(stock_data['sell_price'])
             datetime_obj = stock_data['updated_datetime']
 
-            print(orderbook_id)
-            print('relatime data:', buy_ask, '\n\t', sell_ask, '\n\t', datetime_obj)
-
             if isinstance(datetime_obj, str):
                 datetime_obj = datetime.strptime(datetime_obj, "%Y-%m-%d %H:%M:%S")
 
@@ -54,7 +51,6 @@ class TradingLogic:
 
             owned_stocks = {int(k): v for k, v in owned_stocks.items()}
             # budget = self.account_manager.get_balance()
-            budget = 10000
 
             # Exit strategy
             if buy_ask < lowest_price:
@@ -66,15 +62,19 @@ class TradingLogic:
 
                     owned_stocks[orderbook_id]['shares'] = 0
                     current_date = datetime.now().date()
-                    await self.avanza.place_order(
-                        account_id=os.getenv('AVANZA_ACCOUNT_ID'),
-                        order_book_id=orderbook_id,
-                        order_type=OrderType.SELL,
-                        price=buy_ask,
-                        valid_until=current_date,
-                        volume=sell_shares
-                    )
-                    print(f"SOLD {sell_shares} shares of {orderbook_id} at {buy_ask}.")
+                    if isinstance(self.account_manager, SimulatedAccountManager):
+                        self.account_manager.update_balance(transaction_amount)
+                        self.account_manager.update_owned_stocks(orderbook_id, -sell_shares, buy_ask)
+                    else: 
+                        await self.avanza.place_order(
+                            account_id=os.getenv('AVANZA_ACCOUNT_ID'),
+                            order_book_id=orderbook_id,
+                            order_type=OrderType.SELL,
+                            price=buy_ask,
+                            valid_until=current_date,
+                            volume=sell_shares
+                        )
+                        print(f"SOLD {sell_shares} shares of {orderbook_id} at {buy_ask}.")
 
             # Entry strategy
             else:
@@ -92,14 +92,18 @@ class TradingLogic:
                                 budget -= transaction_amount
                                 owned_stocks[orderbook_id] = {'price': sell_ask, 'shares': shares_to_buy}
                                 current_date = datetime.now()
-                                await self.avanza.place_order(
-                                    account_id=os.getenv('AVANZA_ACCOUNT_ID'),
-                                    order_book_id=orderbook_id,
-                                    order_type=OrderType.BUY,
-                                    price=sell_ask,
-                                    valid_until=current_date,
-                                    volume=shares_to_buy
-                                )
+                                if isinstance(self.account_manager, SimulatedAccountManager):
+                                    self.account_manager.update_balance(-transaction_amount)
+                                    self.account_manager.update_owned_stocks(orderbook_id, shares_to_buy, sell_ask)
+                                else:
+                                    await self.avanza.place_order(
+                                        account_id=os.getenv('AVANZA_ACCOUNT_ID'),
+                                        order_book_id=orderbook_id,
+                                        order_type=OrderType.BUY,
+                                        price=sell_ask,
+                                        valid_until=current_date,
+                                        volume=shares_to_buy
+                                    )
                                 print(f"BUY {shares_to_buy} shares of {orderbook_id} at {sell_ask}.")
                             else:
                                 print(f"Insufficient budget or transaction amount too low for {orderbook_id}.")
