@@ -13,12 +13,12 @@ class SimulatedAccountManager:
     def get_balance(self) -> float:
         return self.balance
 
-    def get_owned_stocks(self) -> Dict[int, Dict[str, float]]:
+    def get_owned_stocks(self, dummy_arg=None):
         return self.owned_stocks
 
-    def update_balance(self, amount: float) -> None:
+    def update_balance(self, orderbook_id: int, amount: float, shares: int) -> None:
         self.balance += amount
-        self.record_transaction(0, 'balance_update', 0, amount)
+        self.record_transaction(orderbook_id, 'balance_update', shares, amount)
         self.save_to_file()  # Save state after balance update
 
     def update_owned_stocks(self, orderbook_id: int, shares: int, price: float) -> None:

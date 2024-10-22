@@ -15,7 +15,9 @@ class AccountManager:
             print(f"Unexpected error fetching balance: {e}")
         return 0
 
-    def get_owned_stocks(self, owned_stocks_dict):
+    def get_owned_stocks(self, owned_stocks_dict=None):
+        if owned_stocks_dict is None:
+            owned_stocks_dict = {}
         try:
             data = self.avanza.get_accounts_positions()
             if 'withOrderbook' not in data:

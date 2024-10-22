@@ -66,7 +66,7 @@ class TradingLogic:
                     owned_stocks[orderbook_id]['shares'] = 0
                     current_date = datetime.now().date()
                     if isinstance(self.account_manager, SimulatedAccountManager):
-                        self.account_manager.update_balance(transaction_amount)
+                        self.account_manager.update_balance(orderbook_id, transaction_amount, sell_shares)
                         self.account_manager.update_owned_stocks(orderbook_id, -sell_shares, buy_ask)
                     else: 
                         await self.avanza.place_order(
@@ -96,7 +96,7 @@ class TradingLogic:
                                 owned_stocks[orderbook_id] = {'price': sell_ask, 'shares': shares_to_buy}
                                 current_date = datetime.now()
                                 if isinstance(self.account_manager, SimulatedAccountManager):
-                                    self.account_manager.update_balance(-transaction_amount)
+                                    self.account_manager.update_balance(orderbook_id, -transaction_amount, shares_to_buy)
                                     self.account_manager.update_owned_stocks(orderbook_id, shares_to_buy, sell_ask)
                                 else:
                                     await self.avanza.place_order(

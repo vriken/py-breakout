@@ -39,7 +39,7 @@ def integrate_account_manager(avanza):
     owned_stocks_dict = {}  # Populate this dictionary as needed
 
     # Get owned stocks
-    owned_stocks = account_manager.get_owned_stocks(owned_stocks_dict)
+    owned_stocks = account_manager.get_owned_stocks()
     print("Owned Stocks:")
     for stock_id, stock_info in owned_stocks.items():
         print(f"ID: {stock_id}, Info: {stock_info}")
@@ -47,7 +47,7 @@ def integrate_account_manager(avanza):
     return account_manager, owned_stocks  # Return both account_manager and owned_stocks
 
 current_date = datetime.now()
-start_date = (current_date - timedelta(days=30)).strftime('%Y-%m-%d')
+start_date = (current_date - timedelta(days=80)).strftime('%Y-%m-%d')
 end_date = (current_date - timedelta(days=1)).strftime('%Y-%m-%d')
 
 @backoff.on_exception(backoff.expo, Exception, max_tries=5)
