@@ -79,19 +79,23 @@ class TradingLogic:
                         )
                         print(f"SOLD {sell_shares} shares of {orderbook_id} at {buy_ask}.")
 
-            # Entry strategy
             else:
                 if orderbook_id not in owned_stocks or owned_stocks[orderbook_id]['shares'] == 0:
                     print(f"Entering buy logic for {orderbook_id}")
-                    max_budget_for_stock = budget
-                    max_affordable_shares = floor(max_budget_for_stock / sell_ask)
-                    stock_purchase_impact = sell_ask * max_affordable_shares + self.calculate_brokerage_fee(sell_ask * max_affordable_shares)
+                    max_budget_for_stock = min(budget, 15000)  # Limit max budget to 15,000 SEK
+                    max_affordable_shares = floor(max_budget_for_stock / sell_ask) - 1
 
                     if max_affordable_shares > 0:
-                        shares_to_buy = max_affordable_shares if stock_purchase_impact < 100_000 * 0.2 else randint(1000, 20_000)
+                        stock_purchase_impact = sell_ask * max_affordable_shares + self.calculate_brokerage_fee(sell_ask * max_affordable_shares)
+
+                        if stock_purchase_impact < 100_000 * 0.2:
+                            shares_to_buy = max_affordable_shares
+                        else:
+                            shares_to_buy = randint(1, max_affordable_shares)
+
                         if shares_to_buy >= 1 and sell_ask > highest_price:
                             transaction_amount = shares_to_buy * sell_ask + self.calculate_brokerage_fee(shares_to_buy * sell_ask)
-                            if transaction_amount <= budget and transaction_amount > 250:
+                            if 1000 <= transaction_amount <= budget:
                                 budget -= transaction_amount
                                 owned_stocks[orderbook_id] = {'price': sell_ask, 'shares': shares_to_buy}
                                 current_date = datetime.now()
@@ -109,13 +113,12 @@ class TradingLogic:
                                     )
                                 print(f"BUY {shares_to_buy} shares of {orderbook_id} at {sell_ask}.")
                             else:
-                                print(f"Insufficient budget or transaction amount too low for {orderbook_id}.")
+                                print(f"Transaction amount ({transaction_amount:.2f}) is not within valid range for {orderbook_id}.")
                         else:
-                            print(f"Not buying any shares of {orderbook_id} as calculated shares to buy is less than one.")
+                            print(f"Not buying shares of {orderbook_id}: shares_to_buy < 1 or sell_ask <= highest_price")
                     else:
-                        print(f"Not buying any shares of {orderbook_id} as max_affordable_shares is zero.")
+                        print(f"Not buying shares of {orderbook_id}: max_affordable_shares is zero")
+                else:
+                    print(f"Not buying shares of {orderbook_id}: already owned or has shares")
         except Exception as e:
             print(f"Error processing realtime data for orderbook ID {orderbook_id}: {e}")
-
-# Example usage:
-# trading_logic = TradingLogic(avanza, account_manager)

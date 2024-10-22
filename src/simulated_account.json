@@ -1,0 +1,79 @@
+{
+  "balance": 40249.446124999995,
+  "owned_stocks": {
+    "972553": {
+      "shares": 42,
+      "price": 356.0
+    },
+    "507540": {
+      "shares": 76,
+      "price": 195.0
+    },
+    "790858": {
+      "shares": 349,
+      "price": 42.95
+    },
+    "43788": {
+      "shares": 56,
+      "price": 265.0
+    }
+  },
+  "transaction_history": [
+    {
+      "timestamp": "2024-10-22T17:10:50.242423",
+      "orderbook_id": 972553,
+      "action": "balance_update",
+      "shares": 42,
+      "price": -14989.38
+    },
+    {
+      "timestamp": "2024-10-22T17:10:50.244763",
+      "orderbook_id": 972553,
+      "action": "stock_update",
+      "shares": 42,
+      "price": 356.0
+    },
+    {
+      "timestamp": "2024-10-22T17:10:55.721639",
+      "orderbook_id": 507540,
+      "action": "balance_update",
+      "shares": 76,
+      "price": -14857.05
+    },
+    {
+      "timestamp": "2024-10-22T17:10:55.722774",
+      "orderbook_id": 507540,
+      "action": "stock_update",
+      "shares": 76,
+      "price": 195.0
+    },
+    {
+      "timestamp": "2024-10-22T17:12:09.181423",
+      "orderbook_id": 790858,
+      "action": "balance_update",
+      "shares": 349,
+      "price": -15027.023875
+    },
+    {
+      "timestamp": "2024-10-22T17:12:09.182667",
+      "orderbook_id": 790858,
+      "action": "stock_update",
+      "shares": 349,
+      "price": 42.95
+    },
+    {
+      "timestamp": "2024-10-22T17:14:32.158655",
+      "orderbook_id": 43788,
+      "action": "balance_update",
+      "shares": 56,
+      "price": -14877.1
+    },
+    {
+      "timestamp": "2024-10-22T17:14:32.160086",
+      "orderbook_id": 43788,
+      "action": "stock_update",
+      "shares": 56,
+      "price": 265.0
+    }
+  ]
+}
