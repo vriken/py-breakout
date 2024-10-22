@@ -87,34 +87,35 @@ class TradingLogic:
                     max_affordable_shares = floor(max_budget_for_stock / sell_ask)
                     stock_purchase_impact = (sell_ask + self.calculate_brokerage_fee(sell_ask)) * max_affordable_shares
 
-
-                max_transaction_amount = 15000 
-                if max_affordable_shares > 0:
-                    shares_to_buy = max_affordable_shares if stock_purchase_impact < 100_000 * 0.2 else randint(1, max_affordable_shares)
-                    if shares_to_buy >= 1 and sell_ask > highest_price:
-                        transaction_amount = shares_to_buy * sell_ask + self.calculate_brokerage_fee(shares_to_buy * sell_ask)
-                        if transaction_amount <= budget and transaction_amount > 1000 and transaction_amount <= max_transaction_amount:
-                            budget -= transaction_amount
-                            owned_stocks[orderbook_id] = {'price': sell_ask, 'shares': shares_to_buy}
-                            current_date = datetime.now()
-                            if isinstance(self.account_manager, SimulatedAccountManager):
-                                self.account_manager.update_balance(orderbook_id, -transaction_amount, shares_to_buy)
-                                self.account_manager.update_owned_stocks(orderbook_id, shares_to_buy, sell_ask)
+                    if max_affordable_shares > 0:
+                        shares_to_buy = max_affordable_shares if stock_purchase_impact < 100_000 * 0.2 else randint(1000, 20_000)
+                        if shares_to_buy >= 1 and sell_ask > highest_price:
+                            transaction_amount = shares_to_buy * sell_ask + self.calculate_brokerage_fee(shares_to_buy * sell_ask)
+                            if transaction_amount <= budget and transaction_amount > 250:
+                                budget -= transaction_amount
+                                owned_stocks[orderbook_id] = {'price': sell_ask, 'shares': shares_to_buy}
+                                current_date = datetime.now()
+                                if isinstance(self.account_manager, SimulatedAccountManager):
+                                    self.account_manager.update_balance(orderbook_id, -transaction_amount, shares_to_buy)
+                                    self.account_manager.update_owned_stocks(orderbook_id, shares_to_buy, sell_ask)
+                                else:
+                                    await self.avanza.place_order(
+                                        account_id=os.getenv('AVANZA_ACCOUNT_ID'),
+                                        order_book_id=orderbook_id,
+                                        order_type=OrderType.BUY,
+                                        price=sell_ask,
+                                        valid_until=current_date,
+                                        volume=shares_to_buy
+                                    )
+                                print(f"BUY {shares_to_buy} shares of {orderbook_id} at {sell_ask}.")
                             else:
-                                await self.avanza.place_order(
-                                    account_id=os.getenv('AVANZA_ACCOUNT_ID'),
-                                    order_book_id=orderbook_id,
-                                    order_type=OrderType.BUY,
-                                    price=sell_ask,
-                                    valid_until=current_date,
-                                    volume=shares_to_buy
-                                )
-                            print(f"BUY {shares_to_buy} shares of {orderbook_id} at {sell_ask}.")
+                                print(f"Insufficient budget or transaction amount too low for {orderbook_id}.")
                         else:
-                            print(f"Insufficient budget, transaction amount too low, or exceeds max limit for {orderbook_id}.")
+                            print(f"Not buying any shares of {orderbook_id} as calculated shares to buy is less than one.")
                     else:
-                        print(f"Not buying any shares of {orderbook_id} as calculated shares to buy is less than one.")
-                else:
-                    print(f"Not buying any shares of {orderbook_id} as max_affordable_shares is zero.")
+                        print(f"Not buying any shares of {orderbook_id} as max_affordable_shares is zero.")
         except Exception as e:
             print(f"Error processing realtime data for orderbook ID {orderbook_id}: {e}")
+
+# Example usage:
+# trading_logic = TradingLogic(avanza, account_manager)
