@@ -1,7 +1,9 @@
-avanza_api==11.0.0
+avanza_api==13.0.0
 backoff==2.2.1
-pandas==2.2.2
+nest_asyncio==1.6.0
+numpy==2.1.2
+pandas==2.2.3
 python-dotenv==1.0.1
-Requests==2.31.0
+scipy==1.14.1
 websockets==10.4
 yahoo_fin==0.8.9.1
