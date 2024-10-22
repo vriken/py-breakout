@@ -1,3 +1,6 @@
+import tracemalloc
+tracemalloc.start()
+
 import pandas as pd
 from datetime import datetime, timedelta
 from avanza import Avanza, ChannelType
@@ -33,8 +36,10 @@ def integrate_account_manager(avanza):
     balance = account_manager.get_balance()
     print(f"Current balance: {balance}")
 
+    owned_stocks_dict = {}  # Populate this dictionary as needed
+
     # Get owned stocks
-    owned_stocks = account_manager.get_owned_stocks()
+    owned_stocks = account_manager.get_owned_stocks(owned_stocks_dict)
     print("Owned Stocks:")
     for stock_id, stock_info in owned_stocks.items():
         print(f"ID: {stock_id}, Info: {stock_info}")
@@ -42,7 +47,7 @@ def integrate_account_manager(avanza):
     return account_manager, owned_stocks  # Return both account_manager and owned_stocks
 
 current_date = datetime.now()
-start_date = (current_date - timedelta(days=3)).strftime('%Y-%m-%d')
+start_date = (current_date - timedelta(days=30)).strftime('%Y-%m-%d')
 end_date = (current_date - timedelta(days=1)).strftime('%Y-%m-%d')
 
 @backoff.on_exception(backoff.expo, Exception, max_tries=5)
@@ -64,26 +69,37 @@ class WebSocketSubscription:
         for id in self.whitelisted_tickers.values():
             await self.resilient_subscribe(id)
 
-    @backoff.on_exception(backoff.expo, ConnectionClosedError, max_tries=5)
+    @backoff.on_exception(backoff.expo, (ConnectionClosedError, Exception), max_tries=5)
     async def resilient_subscribe(self, id):
         try:
-            await self.avanza.subscribe_to_id(ChannelType.QUOTES, str(id), self.callback)
+            await self.avanza.subscribe_to_id(
+                ChannelType.QUOTES, 
+                str(id), 
+                lambda data: asyncio.create_task(self.handle_callback(data))
+            )
         except ConnectionClosedError as e:
             print(f"WebSocket connection closed unexpectedly for ID {id}: {e}. Reconnecting...")
             raise
         except Exception as e:
             print(f"Error subscribing to channel for ID {id}: {e}")
+            if "403:denied_by_security_policy:subscribe_denied" in str(e):
+                print(f"Permission denied for ID {id}. Skipping...")
+                return  # Skip this ID and continue with others
+            raise
 
-    async def callback(self, data):
+    async def handle_callback(self, data):
+        self.callback(data)
+
+    def callback(self, data):
         try:
             orderbook_id = int(data['data']['orderbookId'])
-            print(data)
+            # print(data)
             stock_data = {
                 'buyPrice': data['data']['buyPrice'],
                 'sellPrice': data['data']['sellPrice'],
-                'updatedTime': data['data']['updatedTime']
+                'updatedTime': data['data']['updated']
             }
-            await self.trading_logic.process_realtime_data(orderbook_id, stock_data)
+            asyncio.create_task(self.trading_logic.process_realtime_data(orderbook_id, stock_data))
         except Exception as e:
             print(f"Error in callback: {e}")
 
@@ -92,14 +108,12 @@ nest_asyncio.apply()
 async def run_websocket_subscription():
     avanza = initialize_avanza()
     
-    # Integrate account manager
-    account_manager, owned_stocks = integrate_account_manager(avanza)
-
     print('Fetching historical data for whitelisted stocks from Yahoo')
-    historical_data_dict = {}
+    historical_data_dict = {}  # Initialize the dictionary here
+
     for _, row in stocks.iterrows():
         try:
-            historical_data = get_data(row['ticker'], start_date, end_date, "1d")
+            historical_data = get_data(row['ticker'], start_date, end_date, "1m")
             historical_data_dict[int(row['id'])] = [{
                 'high': r['high'],
                 'low': r['low'],
@@ -107,7 +121,11 @@ async def run_websocket_subscription():
             } for i, r in historical_data.iterrows()]
         except Exception as e:
             print(f"Error fetching data for orderbook ID {row['id']}: {e}")
-    
+
+    # Integrate account manager after historical_data_dict is populated
+    account_manager, owned_stocks = integrate_account_manager(avanza)
+
+
     # Initialize TradingLogic
     trading_logic = TradingLogic(avanza, account_manager)
     
@@ -116,7 +134,18 @@ async def run_websocket_subscription():
     trading_logic.calculate_donchian_channels(historical_data_dict, donchian_parameters)
     
     websocket_subscription = WebSocketSubscription(avanza, whitelisted_tickers, trading_logic)
-    await websocket_subscription.subscribe_to_channels()
+    
+    try:
+        await asyncio.gather(
+            websocket_subscription.subscribe_to_channels(),
+            # Add other concurrent tasks here if needed
+        )
+    except asyncio.CancelledError:
+        print("WebSocket subscription cancelled")
+    finally:
+        # Add cleanup code here if needed
+        pass
+
 
 asyncio.ensure_future(run_websocket_subscription())
 asyncio.get_event_loop().run_forever()

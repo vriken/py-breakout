@@ -31,26 +31,29 @@ class TradingLogic:
     async def process_realtime_data(self, orderbook_id, stock_data):
         try:
             orderbook_id = int(orderbook_id)
-            buy_ask = float(stock_data['buy_price'])
-            sell_ask = float(stock_data['sell_price'])
-            datetime_obj = stock_data['updated_datetime']
+            buy_ask = float(stock_data['buyPrice'])
+            sell_ask = float(stock_data['sellPrice'])
+            datetime_obj = stock_data['updatedTime']
 
             if isinstance(datetime_obj, str):
                 datetime_obj = datetime.strptime(datetime_obj, "%Y-%m-%d %H:%M:%S")
 
+            if isinstance(datetime_obj, int):
+                datetime_obj = datetime.fromtimestamp(datetime_obj / 1000)  # Convert milliseconds to seconds
+
             if datetime_obj and datetime_obj <= (datetime.now() - timedelta(seconds=5)):
                 return
-
+            
             highest_price = round(self.highest_prices.get(orderbook_id, 0), 3)
             lowest_price = round(self.lowest_prices.get(orderbook_id, 0), 3)
 
             owned_stocks = self.account_manager.get_owned_stocks({})
-            if not owned_stocks:
-                print("Error: owned_stocks is empty or None")
-                return
+            # if not owned_stocks:
+            #     print("Error: owned_stocks is empty or None")
+            #     return
 
             owned_stocks = {int(k): v for k, v in owned_stocks.items()}
-            # budget = self.account_manager.get_balance()
+            budget = self.account_manager.get_balance()
 
             # Exit strategy
             if buy_ask < lowest_price:
