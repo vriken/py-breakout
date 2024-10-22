@@ -85,7 +85,7 @@ class TradingLogic:
                     print(f"Entering buy logic for {orderbook_id}")
                     max_budget_for_stock = budget
                     max_affordable_shares = floor(max_budget_for_stock / sell_ask)
-                    stock_purchase_impact = (sell_ask + self.calculate_brokerage_fee(sell_ask)) * max_affordable_shares
+                    stock_purchase_impact = sell_ask * max_affordable_shares + self.calculate_brokerage_fee(sell_ask * max_affordable_shares)
 
                     if max_affordable_shares > 0:
                         shares_to_buy = max_affordable_shares if stock_purchase_impact < 100_000 * 0.2 else randint(1000, 20_000)
