@@ -1,10 +1,9 @@
 from datetime import datetime, timedelta
-from math import floor
+from math import floor, sqrt
 from random import randint
 from avanza import OrderType
 import os
 from simulator import SimulatedAccountManager
-from BWAFPO import calculate_moving_average, calculate_slope, calculate_rsi
 
 class TradingLogic:
     def __init__(self, avanza, account_manager):
@@ -13,15 +12,14 @@ class TradingLogic:
         self.highest_prices = {}
         self.lowest_prices = {}
         self.portfolio_weights = {}
-        self.ma_slopes = {}
-        self.rsi_values = {}
+        self.bollinger_bands = {}
 
     def calculate_indicators(self, historical_data_dict, donchian_parameters):
         for orderbook_id, data_list in historical_data_dict.items():
             upper_length = int(donchian_parameters[orderbook_id]['upper_length'])
             lower_length = int(donchian_parameters[orderbook_id]['lower_length'])
 
-            if len(data_list) >= max(upper_length, lower_length, 30, 14):  # Ensure we have enough data
+            if len(data_list) >= max(upper_length, lower_length, 20):  # Ensure we have enough data
                 prices = [data['close'] for data in data_list]
                 
                 # Calculate Donchian channels
@@ -30,12 +28,24 @@ class TradingLogic:
                 recent_low_data = data_list[-lower_length:]
                 self.lowest_prices[orderbook_id] = min(data['low'] for data in recent_low_data)
 
-                # Calculate 30-day MA slope
-                ma_30 = calculate_moving_average(prices, 30)
-                self.ma_slopes[orderbook_id] = calculate_slope(ma_30)
+                # Calculate Bollinger Bands
+                self.bollinger_bands[orderbook_id] = self.calculate_bollinger_bands(prices, 20, 2)
 
-                # Calculate 14-day RSI
-                self.rsi_values[orderbook_id] = calculate_rsi(prices, 14)[-1]
+    def calculate_bollinger_bands(self, prices, period=20, num_std_dev=2):
+        if len(prices) < period:
+            return None
+        
+        ma = sum(prices[-period:]) / period
+        std_dev = sqrt(sum((price - ma) ** 2 for price in prices[-period:]) / period)
+        
+        upper_band = ma + (std_dev * num_std_dev)
+        lower_band = ma - (std_dev * num_std_dev)
+        
+        return {
+            'upper': upper_band,
+            'middle': ma,
+            'lower': lower_band
+        }
 
     def set_portfolio_weights(self, weights):
         self.portfolio_weights = weights
@@ -77,7 +87,6 @@ class TradingLogic:
         
         return floor(value_to_sell / sell_ask) if sell_ask > 0 else 0
 
-
     async def process_realtime_data(self, orderbook_id, stock_data):
         try:
             orderbook_id = int(orderbook_id)
@@ -93,8 +102,7 @@ class TradingLogic:
 
             highest_price = round(self.highest_prices.get(orderbook_id, 0), 3)
             lowest_price = round(self.lowest_prices.get(orderbook_id, 0), 3)
-            ma_slope = self.ma_slopes.get(orderbook_id, 0)
-            rsi = self.rsi_values.get(orderbook_id, 50)
+            bollinger_bands = self.bollinger_bands.get(orderbook_id, None)
 
             owned_stocks = self.account_manager.get_owned_stocks({})
             if not owned_stocks:
@@ -108,7 +116,7 @@ class TradingLogic:
 
             if current_weight < target_weight:
                 shares_to_buy = self.calculate_shares_to_buy(orderbook_id, target_weight, current_weight, buy_ask)
-                if shares_to_buy > 0 and sell_ask > highest_price and ma_slope > 0 and rsi < 30:
+                if shares_to_buy > 0 and sell_ask > highest_price and bollinger_bands and sell_ask > bollinger_bands['upper']:
                     transaction_amount = shares_to_buy * sell_ask + self.calculate_brokerage_fee(shares_to_buy * sell_ask)
                     if transaction_amount <= self.account_manager.get_balance():
                         current_date = datetime.now().date()
@@ -132,7 +140,7 @@ class TradingLogic:
 
             elif current_weight > target_weight:
                 shares_to_sell = self.calculate_shares_to_sell(orderbook_id, target_weight, current_weight, sell_ask)
-                if shares_to_sell > 0 and buy_ask < lowest_price and ma_slope < 0 and rsi > 70:
+                if shares_to_sell > 0 and buy_ask < lowest_price and bollinger_bands and buy_ask < bollinger_bands['lower']:
                     if orderbook_id in owned_stocks and owned_stocks[orderbook_id]['shares'] >= shares_to_sell:
                         transaction_amount = shares_to_sell * buy_ask - self.calculate_brokerage_fee(shares_to_sell * buy_ask)
                         current_date = datetime.now().date()
@@ -158,4 +166,3 @@ class TradingLogic:
         
         except Exception as e:
             print(f"Error processing realtime data for orderbook ID {orderbook_id}: {e}")
-
